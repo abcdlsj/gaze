@@ -302,7 +302,7 @@ pub fn enumerate_monitor_windows(
                 continue;
             }
             let app_name = win.app_name().unwrap_or_default();
-            if app_name.eq_ignore_ascii_case("shotter")
+            if app_name.eq_ignore_ascii_case("gaze")
                 || app_name.eq_ignore_ascii_case("window server")
                 || app_name.eq_ignore_ascii_case("dock")
                 || app_name.eq_ignore_ascii_case("control center")
@@ -646,7 +646,7 @@ pub fn save_image_file(
     let folder = PathBuf::from(&settings.screenshots_folder);
     fs::create_dir_all(&folder).map_err(|e| format!("Failed to create screenshots folder: {e}"))?;
     let stamp = Local::now().format("%Y-%m-%d_%H-%M-%S-%3f");
-    let file_path = folder.join(format!("Shotter_{stamp}.{ext}"));
+    let file_path = folder.join(format!("Gaze_{stamp}.{ext}"));
     fs::write(&file_path, bytes).map_err(|e| format!("Failed to save screenshot: {e}"))?;
     Ok(file_path)
 }

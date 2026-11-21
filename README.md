@@ -1,4 +1,4 @@
-# Shotter
+# Gaze
 
 A clean, fast, cross-platform (**macOS & Windows**) screenshot, scrolling capture, and annotation app built with **Tauri v2**, **Rust**, **React**, and **Tailwind CSS**.
 

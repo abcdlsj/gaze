@@ -22,11 +22,11 @@ function TooltipBadge({ text }: { text: string }) {
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
     >
-      <span className="inline-flex h-[18px] w-[18px] cursor-default items-center justify-center rounded-full bg-[#EBEBED] text-[11px] font-semibold text-[#515154] transition hover:bg-[#E0E0E4]">
+      <span className="inline-flex h-[16px] w-[16px] cursor-default items-center justify-center rounded-full bg-[#EBEBED] text-[10.5px] font-semibold text-[#515154] transition hover:bg-[#E0E0E4]">
         ?
       </span>
       {open && (
-        <span className="animate-pop-in pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 w-56 -translate-x-1/2 rounded-xl border border-black/[0.08] bg-white/95 px-3 py-2 text-[11.5px] leading-snug text-[#424245] shadow-[0_8px_24px_rgba(0,0,0,0.12)] backdrop-blur-md">
+        <span className="animate-pop-in pointer-events-none absolute left-1/2 top-full z-50 mt-1 w-52 -translate-x-1/2 rounded-lg border border-black/[0.08] bg-white/95 px-2.5 py-1.5 text-[11px] leading-snug text-[#424245] shadow-[0_6px_20px_rgba(0,0,0,0.12)] backdrop-blur-md">
           {text}
         </span>
       )}
@@ -34,7 +34,7 @@ function TooltipBadge({ text }: { text: string }) {
   );
 }
 
-/** Authentic macOS soft-filled radio button matching Reference Image 1 */
+/** Authentic macOS soft-filled radio button */
 function MacRadio({
   checked,
   label,
@@ -48,23 +48,23 @@ function MacRadio({
     <button
       type="button"
       onClick={onClick}
-      className="group inline-flex cursor-pointer items-center gap-[7px] text-[13px] text-[#1D1D1F]"
+      className="group inline-flex cursor-pointer items-center gap-[6px] text-[12.5px] text-[#1D1D1F]"
     >
       <span
-        className={`flex h-[16px] w-[16px] items-center justify-center rounded-full transition-all duration-150 ${
+        className={`flex h-[15px] w-[15px] items-center justify-center rounded-full transition-all duration-150 ${
           checked
             ? "mac-blue-fill"
             : "bg-[#E5E5EA] group-hover:bg-[#DADAE0]"
         }`}
       >
-        {checked && <span className="h-[6px] w-[6px] rounded-full bg-white shadow-2xs" />}
+        {checked && <span className="h-[5.5px] w-[5.5px] rounded-full bg-white shadow-2xs" />}
       </span>
       <span className="tracking-[-0.005em]">{label}</span>
     </button>
   );
 }
 
-/** Authentic macOS soft-filled checkbox matching Reference Image 1 */
+/** Authentic macOS soft-filled checkbox */
 function MacCheckbox({
   checked,
   label,
@@ -78,23 +78,23 @@ function MacCheckbox({
     <button
       type="button"
       onClick={onClick}
-      className="group inline-flex cursor-pointer items-center gap-[7px] text-[13px] text-[#1D1D1F]"
+      className="group inline-flex cursor-pointer items-center gap-[6px] text-[12.5px] text-[#1D1D1F]"
     >
       <span
-        className={`flex h-[16px] w-[16px] items-center justify-center rounded-[4.5px] transition-all duration-150 ${
+        className={`flex h-[15px] w-[15px] items-center justify-center rounded-[4px] transition-all duration-150 ${
           checked
             ? "mac-blue-fill text-white"
             : "bg-[#E5E5EA] group-hover:bg-[#DADAE0]"
         }`}
       >
-        {checked && <Check className="h-[11px] w-[11px] stroke-[3.2]" />}
+        {checked && <Check className="h-[10px] w-[10px] stroke-[3.2]" />}
       </span>
       <span className="tracking-[-0.005em]">{label}</span>
     </button>
   );
 }
 
-/** Crisp macOS mini window preview cards faithfully styled after Reference Image 1 */
+/** Crisp macOS mini window preview cards */
 function MiniWindowCard({
   mode,
   selected,
@@ -117,12 +117,12 @@ function MiniWindowCard({
     <button
       type="button"
       onClick={onSelect}
-      className="group flex cursor-pointer flex-col items-center gap-2 focus:outline-none"
+      className="group flex w-full cursor-pointer flex-col items-center gap-1 focus:outline-none"
     >
       <div
-        className={`relative h-[72px] w-[104px] overflow-hidden rounded-[10px] transition-all duration-150 ${
+        className={`relative h-[56px] w-full overflow-hidden rounded-[8px] transition-all duration-150 ${
           selected
-            ? "ring-[2.5px] ring-[#007AFF] shadow-[0_2px_10px_rgba(0,122,255,0.22)]"
+            ? "ring-[2px] ring-[#007AFF] shadow-[0_2px_8px_rgba(0,122,255,0.2)]"
             : "ring-1 ring-black/[0.11] shadow-[0_1px_2px_rgba(0,0,0,0.04)] group-hover:ring-black/[0.22]"
         }`}
       >
@@ -142,11 +142,11 @@ function MiniWindowCard({
                   "linear-gradient(125deg, transparent 20%, rgba(255,255,255,0.5) 38%, transparent 52%)",
               }}
             />
-            <div className="absolute bottom-0 right-0 h-[54px] w-[78px] rounded-tl-[9px] bg-[#F7F7F8] p-[9px] shadow-[0_4px_14px_rgba(0,0,0,0.28)] ring-[0.5px] ring-black/10">
-              <div className="flex gap-[5px]">
-                <span className="h-[6.5px] w-[6.5px] rounded-full bg-[#FF5F57] shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.12)]" />
-                <span className="h-[6.5px] w-[6.5px] rounded-full bg-[#FEBC2E] shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.12)]" />
-                <span className="h-[6.5px] w-[6.5px] rounded-full bg-[#28C840] shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.12)]" />
+            <div className="absolute bottom-0 right-0 h-[42px] w-[72%] rounded-tl-[7px] bg-[#F7F7F8] p-[7px] shadow-[0_3px_10px_rgba(0,0,0,0.28)] ring-[0.5px] ring-black/10">
+              <div className="flex gap-[4px]">
+                <span className="h-[5.5px] w-[5.5px] rounded-full bg-[#FF5F57] shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.12)]" />
+                <span className="h-[5.5px] w-[5.5px] rounded-full bg-[#FEBC2E] shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.12)]" />
+                <span className="h-[5.5px] w-[5.5px] rounded-full bg-[#28C840] shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.12)]" />
               </div>
             </div>
           </div>
@@ -154,11 +154,11 @@ function MiniWindowCard({
 
         {mode === "transparent" && (
           <div className="checkerboard-sm h-full w-full">
-            <div className="absolute bottom-0 right-0 h-[54px] w-[78px] rounded-tl-[9px] bg-[#F8F8FA] p-[9px] shadow-[0_4px_14px_rgba(0,0,0,0.18)] ring-[0.5px] ring-black/[0.09]">
-              <div className="flex gap-[5px]">
-                <span className="h-[6.5px] w-[6.5px] rounded-full bg-[#FF5F57] shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.12)]" />
-                <span className="h-[6.5px] w-[6.5px] rounded-full bg-[#FEBC2E] shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.12)]" />
-                <span className="h-[6.5px] w-[6.5px] rounded-full bg-[#28C840] shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.12)]" />
+            <div className="absolute bottom-0 right-0 h-[42px] w-[72%] rounded-tl-[7px] bg-[#F8F8FA] p-[7px] shadow-[0_3px_10px_rgba(0,0,0,0.18)] ring-[0.5px] ring-black/[0.09]">
+              <div className="flex gap-[4px]">
+                <span className="h-[5.5px] w-[5.5px] rounded-full bg-[#FF5F57] shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.12)]" />
+                <span className="h-[5.5px] w-[5.5px] rounded-full bg-[#FEBC2E] shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.12)]" />
+                <span className="h-[5.5px] w-[5.5px] rounded-full bg-[#28C840] shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.12)]" />
               </div>
             </div>
           </div>
@@ -166,28 +166,28 @@ function MiniWindowCard({
 
         {mode === "solid_color" && (
           <div className="h-full w-full" style={{ backgroundColor: solidColor }}>
-            <div className="absolute bottom-0 right-0 h-[54px] w-[78px] rounded-tl-[9px] bg-[#F7F7F8] p-[9px] shadow-[0_4px_14px_rgba(0,0,0,0.32)] ring-[0.5px] ring-white/10">
-              <div className="flex gap-[5px]">
-                <span className="h-[6.5px] w-[6.5px] rounded-full bg-[#FF5F57]" />
-                <span className="h-[6.5px] w-[6.5px] rounded-full bg-[#FEBC2E]" />
-                <span className="h-[6.5px] w-[6.5px] rounded-full bg-[#28C840]" />
+            <div className="absolute bottom-0 right-0 h-[42px] w-[72%] rounded-tl-[7px] bg-[#F7F7F8] p-[7px] shadow-[0_3px_10px_rgba(0,0,0,0.32)] ring-[0.5px] ring-white/10">
+              <div className="flex gap-[4px]">
+                <span className="h-[5.5px] w-[5.5px] rounded-full bg-[#FF5F57]" />
+                <span className="h-[5.5px] w-[5.5px] rounded-full bg-[#FEBC2E]" />
+                <span className="h-[5.5px] w-[5.5px] rounded-full bg-[#28C840]" />
               </div>
             </div>
           </div>
         )}
 
         {mode === "trim_shadow" && (
-          <div className="h-full w-full bg-[#F7F7F8] p-[9px]">
-            <div className="flex gap-[5px]">
-              <span className="h-[6.5px] w-[6.5px] rounded-full bg-[#FF5F57] shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.1)]" />
-              <span className="h-[6.5px] w-[6.5px] rounded-full bg-[#FEBC2E] shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.1)]" />
-              <span className="h-[6.5px] w-[6.5px] rounded-full bg-[#28C840] shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.1)]" />
+          <div className="h-full w-full bg-[#F7F7F8] p-[7px]">
+            <div className="flex gap-[4px]">
+              <span className="h-[5.5px] w-[5.5px] rounded-full bg-[#FF5F57] shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.1)]" />
+              <span className="h-[5.5px] w-[5.5px] rounded-full bg-[#FEBC2E] shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.1)]" />
+              <span className="h-[5.5px] w-[5.5px] rounded-full bg-[#28C840] shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.1)]" />
             </div>
           </div>
         )}
       </div>
       <span
-        className={`text-[12px] tracking-[-0.005em] transition ${
+        className={`text-[11.5px] tracking-[-0.005em] transition ${
           selected ? "font-medium text-[#1D1D1F]" : "text-[#424245]"
         }`}
       >
@@ -241,15 +241,15 @@ export function GeneralTab({ settings, onChange }: Props) {
   const speedPct = Math.max(0, Math.min(100, settings.scrolling_speed));
 
   return (
-    <div className="flex flex-col px-8 py-5">
+    <div className="flex flex-col px-5 py-3.5">
       {/* Window Screenshot Background */}
-      <div className="flex items-center gap-2">
-        <span className="text-[13.5px] font-medium tracking-[-0.01em] text-[#1D1D1F]">
+      <div className="flex items-center gap-1.5">
+        <span className="text-[12.5px] font-medium tracking-[-0.01em] text-[#1D1D1F]">
           Window Screenshot Background
         </span>
         <TooltipBadge text="Choose how background & drop shadow are rendered when capturing an individual window." />
         {settings.window_background === "solid_color" && (
-          <label className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-[#F5F5F7] px-2.5 py-0.5 text-[11px] font-medium text-[#515154] ring-1 ring-black/[0.06]">
+          <label className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-[#F5F5F7] px-2 py-0.5 text-[11px] font-medium text-[#515154] ring-1 ring-black/[0.06]">
             <span>Color</span>
             <input
               type="color"
@@ -257,13 +257,13 @@ export function GeneralTab({ settings, onChange }: Props) {
               onChange={(e) =>
                 onChange({ solid_background_color: e.target.value })
               }
-              className="h-4 w-4 cursor-pointer rounded-full border-0 bg-transparent p-0"
+              className="h-3.5 w-3.5 cursor-pointer rounded-full border-0 bg-transparent p-0"
             />
           </label>
         )}
       </div>
 
-      <div className="mt-3.5 grid grid-cols-4 gap-3.5">
+      <div className="mt-2 grid grid-cols-4 gap-2.5">
         {(
           ["wallpaper", "transparent", "solid_color", "trim_shadow"] as WindowBackground[]
         ).map((mode) => (
@@ -277,26 +277,26 @@ export function GeneralTab({ settings, onChange }: Props) {
         ))}
       </div>
 
-      <div className="my-[18px] h-px bg-black/[0.07]" />
+      <div className="my-3 h-px bg-black/[0.07]" />
 
       {/* Folder / Format / Retina */}
-      <div className="grid grid-cols-[198px_1fr] items-center gap-x-4 gap-y-3">
-        <div className="text-right text-[13px] text-[#3A3A3C]">
+      <div className="grid grid-cols-[182px_1fr] items-center gap-x-3 gap-y-2">
+        <div className="text-right text-[12.5px] text-[#3A3A3C]">
           Screenshots folder
         </div>
         <button
           type="button"
           onClick={() => void pickFolder()}
           title={settings.screenshots_folder}
-          className="mac-btn flex h-[28px] w-full cursor-pointer items-center justify-center truncate rounded-[7px] px-3 text-[13px] font-normal text-[#1D1D1F] transition"
+          className="mac-btn flex h-[26px] w-full cursor-pointer items-center justify-center truncate rounded-[6px] px-2.5 text-[12.5px] font-normal text-[#1D1D1F] transition"
         >
           <span className="truncate">{folderShortName}</span>
         </button>
 
-        <div className="text-right text-[13px] text-[#3A3A3C]">
+        <div className="text-right text-[12.5px] text-[#3A3A3C]">
           Save format
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3.5">
           <MacRadio
             checked={settings.save_format === "png"}
             label="PNG"
@@ -310,7 +310,7 @@ export function GeneralTab({ settings, onChange }: Props) {
           <TooltipBadge text="Auto uses lossless PNG for UI & transparency, and high-quality JPEG for large photographic captures." />
         </div>
 
-        <div className="text-right text-[13px] text-[#3A3A3C]">
+        <div className="text-right text-[12.5px] text-[#3A3A3C]">
           Resize retina screenshots
         </div>
         <div>
@@ -324,14 +324,14 @@ export function GeneralTab({ settings, onChange }: Props) {
         </div>
       </div>
 
-      <div className="my-[18px] h-px bg-black/[0.07]" />
+      <div className="my-3 h-px bg-black/[0.07]" />
 
       {/* Scrolling settings */}
-      <div className="grid grid-cols-[198px_1fr] items-center gap-x-4 gap-y-3.5">
-        <div className="text-right text-[13px] text-[#3A3A3C]">
+      <div className="grid grid-cols-[182px_1fr] items-center gap-x-3 gap-y-2">
+        <div className="text-right text-[12.5px] text-[#3A3A3C]">
           Scrolling screenshot max height
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <input
             type="text"
             value={heightDraft}
@@ -342,15 +342,15 @@ export function GeneralTab({ settings, onChange }: Props) {
                 commitMaxHeight();
               }
             }}
-            className="h-[27px] w-[96px] rounded-[7px] border border-black/[0.14] bg-white px-2.5 text-right text-[13px] tabular-nums text-[#1D1D1F] shadow-[inset_0_0.5px_1.5px_rgba(0,0,0,0.05)] outline-none transition focus:border-[#007AFF] focus:ring-[3px] focus:ring-[#007AFF]/20"
+            className="h-[25px] w-[88px] rounded-[6px] border border-black/[0.14] bg-white px-2 text-right text-[12.5px] tabular-nums text-[#1D1D1F] shadow-[inset_0_0.5px_1.5px_rgba(0,0,0,0.05)] outline-none transition focus:border-[#007AFF] focus:ring-[3px] focus:ring-[#007AFF]/20"
           />
-          <span className="text-[13px] text-[#3A3A3C]">px</span>
+          <span className="text-[12.5px] text-[#3A3A3C]">px</span>
         </div>
 
-        <div className="text-right text-[13px] text-[#3A3A3C]">
+        <div className="text-right text-[12.5px] text-[#3A3A3C]">
           Scrolling screenshot speed
         </div>
-        <div className="flex flex-col pt-1">
+        <div className="flex flex-col pt-0.5">
           <input
             type="range"
             min={1}
@@ -359,12 +359,12 @@ export function GeneralTab({ settings, onChange }: Props) {
             onChange={(e) =>
               onChange({ scrolling_speed: Number(e.target.value) })
             }
-            className="shotter-slider w-full"
+            className="gaze-slider w-full"
             style={{
               background: `linear-gradient(to right, #007AFF 0%, #007AFF ${speedPct}%, #E5E5EA ${speedPct}%, #E5E5EA 100%)`,
             }}
           />
-          <div className="mt-1.5 flex justify-between px-1.5">
+          <div className="mt-1 flex justify-between px-1.5">
             {[0, 1, 2, 3].map((tick) => (
               <span
                 key={tick}
@@ -375,11 +375,11 @@ export function GeneralTab({ settings, onChange }: Props) {
         </div>
       </div>
 
-      <div className="my-[18px] h-px bg-black/[0.07]" />
+      <div className="my-3 h-px bg-black/[0.07]" />
 
       {/* Startup & Post-capture workflow */}
-      <div className="grid grid-cols-[198px_1fr] items-center gap-x-4 gap-y-3">
-        <div className="text-right text-[13px] text-[#3A3A3C]">Autostart</div>
+      <div className="grid grid-cols-[182px_1fr] items-center gap-x-3 gap-y-2">
+        <div className="text-right text-[12.5px] text-[#3A3A3C]">Autostart</div>
         <div>
           <MacCheckbox
             checked={settings.autostart}
@@ -388,10 +388,10 @@ export function GeneralTab({ settings, onChange }: Props) {
           />
         </div>
 
-        <div className="text-right text-[13px] text-[#3A3A3C]">
+        <div className="text-right text-[12.5px] text-[#3A3A3C]">
           After screenshot
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3.5">
           <MacCheckbox
             checked={settings.after_screenshot_show}
             label="Show"
@@ -421,10 +421,10 @@ export function GeneralTab({ settings, onChange }: Props) {
           />
         </div>
 
-        <div className="text-right text-[13px] text-[#3A3A3C]">
+        <div className="text-right text-[12.5px] text-[#3A3A3C]">
           After Area Crop, show
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3.5">
           <MacRadio
             checked={settings.after_area_crop === "thumbnail"}
             label="Thumbnail"
@@ -441,7 +441,7 @@ export function GeneralTab({ settings, onChange }: Props) {
           />
         </div>
 
-        <div className="text-right text-[13px] text-[#3A3A3C]">
+        <div className="text-right text-[12.5px] text-[#3A3A3C]">
           Hide preview thumbnail
         </div>
         <div className="relative">
@@ -453,7 +453,7 @@ export function GeneralTab({ settings, onChange }: Props) {
                 hide_preview_thumbnail: e.target.value as ThumbnailAutoHide,
               })
             }
-            className={`h-[28px] w-full appearance-none rounded-[7px] pl-2.5 pr-7 text-[13px] outline-none transition ${
+            className={`h-[26px] w-full appearance-none rounded-[6px] pl-2.5 pr-7 text-[12.5px] outline-none transition ${
               thumbnailDisabled
                 ? "cursor-not-allowed bg-[#F2F2F4] text-[#AEAEB2]"
                 : "cursor-pointer border border-black/[0.12] bg-white text-[#1D1D1F] shadow-[0_0.5px_1px_rgba(0,0,0,0.05)] focus:border-[#007AFF] focus:ring-[3px] focus:ring-[#007AFF]/20"

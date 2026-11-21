@@ -40,7 +40,7 @@ where
     let prefs = MenuItem::with_id(app, "tray_prefs", "Preferences...", true, None::<&str>)
         .map_err(|e| e.to_string())?;
     let sep2 = PredefinedMenuItem::separator(app).map_err(|e| e.to_string())?;
-    let quit = MenuItem::with_id(app, "tray_quit", "Quit Shotter", true, None::<&str>)
+    let quit = MenuItem::with_id(app, "tray_quit", "Quit Gaze", true, None::<&str>)
         .map_err(|e| e.to_string())?;
 
     let menu = Menu::with_items(
@@ -63,9 +63,9 @@ where
         .map_err(|e| format!("Failed to load tray icon: {e}"))?;
 
     let cb = on_action.clone();
-    let builder = TrayIconBuilder::with_id("shotter-tray")
+    let builder = TrayIconBuilder::with_id("gaze-tray")
         .icon(icon)
-        .tooltip("Shotter")
+        .tooltip("Gaze")
         .menu(&menu)
         .on_menu_event(move |app_handle, event| match event.id.as_ref() {
             "tray_area" => cb(app_handle.clone(), ACTION_AREA),

@@ -23,8 +23,20 @@ export function keyboardEventToShortcut(e: KeyboardEvent): string | null {
   }
 
   const parts: string[] = [];
-  if (e.metaKey || e.ctrlKey) {
-    parts.push("CommandOrControl");
+  if (isMac) {
+    if (e.metaKey) {
+      parts.push("CommandOrControl");
+    }
+    if (e.ctrlKey) {
+      parts.push("Control");
+    }
+  } else {
+    if (e.ctrlKey) {
+      parts.push("CommandOrControl");
+    }
+    if (e.metaKey) {
+      parts.push("Super");
+    }
   }
   if (e.altKey) {
     parts.push("Alt");
@@ -51,6 +63,9 @@ export function keyboardEventToShortcut(e: KeyboardEvent): string | null {
 function normalizeKeyCode(code: string, key: string): string | null {
   if (/^F([1-9]|1[0-2])$/.test(code)) {
     return code;
+  }
+  if (/^F([1-9]|1[0-2])$/.test(key)) {
+    return key;
   }
   if (/^Key([A-Z])$/.test(code)) {
     return code.slice(3);

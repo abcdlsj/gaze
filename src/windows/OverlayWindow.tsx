@@ -128,28 +128,43 @@ export function OverlayWindow() {
         }
 
         setReady(true);
-        // Show pre-warmed window right after the new snapshot is committed to the GPU compositor
-        requestAnimationFrame(() => {
-          void showOverlayWindow();
-        });
-      } catch {
+        // Show pre-warmed window immediately after ctx.putImageData commits the pixels.
+        // Do NOT wrap in requestAnimationFrame: macOS WKWebView suspends rAF on hidden
+        // (visible: false) windows, which would permanently prevent the overlay from showing.
+        await showOverlayWindow();
+      } catch (err) {
+        if (incomingInfo) {
+          console.error("Failed to load overlay session:", err);
+        }
         // Ignore when pre-warmed at app boot with no active session yet
       }
     },
     [],
   );
 
-  // Listen for pre-warmed capture triggers + load immediately if launched on-demand
+  // Register listener FIRST, then check for an already-active session so there is zero startup race
   useEffect(() => {
-    void loadSessionSnapshot();
-    const unlistenPromise = listen<OverlaySessionInfo>(
-      "overlay-session-ready",
-      (event) => {
-        void loadSessionSnapshot(event.payload);
-      },
-    );
+    let active = true;
+    let unlisten: (() => void) | null = null;
+
+    void (async () => {
+      const fn = await listen<OverlaySessionInfo>(
+        "overlay-session-ready",
+        (event) => {
+          void loadSessionSnapshot(event.payload);
+        },
+      );
+      if (!active) {
+        fn();
+        return;
+      }
+      unlisten = fn;
+      await loadSessionSnapshot();
+    })();
+
     return () => {
-      void unlistenPromise.then((u) => u());
+      active = false;
+      if (unlisten) unlisten();
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
   }, [loadSessionSnapshot]);

@@ -4,12 +4,14 @@ import {
   formatShortcutDisplay,
   keyboardEventToShortcut,
 } from "../../lib/hotkeys";
+import { setHotkeysSuspended } from "../../lib/tauri";
 import type { AppSettings, HotkeyConfig } from "../../types";
 
 interface Props {
   settings: AppSettings;
   hotkeyErrors: Record<string, string | null>;
   onChange: (patch: Partial<AppSettings>) => void;
+  onHotkeyErrors?: (errors: Record<string, string | null>) => void;
 }
 
 const ROWS: {
@@ -44,10 +46,26 @@ const ROWS: {
   },
 ];
 
-export function HotkeysTab({ settings, hotkeyErrors, onChange }: Props) {
+export function HotkeysTab({
+  settings,
+  hotkeyErrors,
+  onChange,
+  onHotkeyErrors,
+}: Props) {
   const [recordingKey, setRecordingKey] = useState<keyof HotkeyConfig | null>(
     null,
   );
+
+  // Suspend OS global shortcuts while recording so existing bindings (e.g. F1) can be captured cleanly.
+  useEffect(() => {
+    if (!recordingKey) return;
+    void setHotkeysSuspended(true);
+    return () => {
+      void setHotkeysSuspended(false).then((errs) => {
+        onHotkeyErrors?.(errs);
+      });
+    };
+  }, [recordingKey, onHotkeyErrors]);
 
   useEffect(() => {
     if (!recordingKey) return;
@@ -100,18 +118,17 @@ export function HotkeysTab({ settings, hotkeyErrors, onChange }: Props) {
   };
 
   return (
-    <div className="flex flex-col px-8 py-5">
-      <div className="mb-3.5">
-        <h3 className="text-[13.5px] font-semibold tracking-[-0.01em] text-[#1D1D1F]">
+    <div className="flex flex-col px-5 py-3.5">
+      <div className="mb-2.5">
+        <h3 className="text-[13px] font-semibold tracking-[-0.01em] text-[#1D1D1F]">
           Global Shortcuts
         </h3>
-        <p className="mt-0.5 text-[11.5px] text-[#86868B]">
-          Click any key box and press F1–F12 or a modifier combo. Press Esc to
-          cancel.
+        <p className="mt-0.5 text-[11px] text-[#86868B]">
+          Click any key box and press F1–F12 or a modifier combo. Esc cancels.
         </p>
       </div>
 
-      <div className="divide-y divide-black/[0.06] overflow-hidden rounded-xl border border-black/[0.08] bg-[#FAFAFC]">
+      <div className="divide-y divide-black/[0.06] overflow-hidden rounded-lg border border-black/[0.08] bg-[#FAFAFC]">
         {ROWS.map((row) => {
           const rawValue = settings.hotkeys[row.key];
           const display = formatShortcutDisplay(rawValue);
@@ -119,22 +136,24 @@ export function HotkeysTab({ settings, hotkeyErrors, onChange }: Props) {
           const err = hotkeyErrors[row.key];
 
           return (
-            <div key={row.key} className="flex flex-col gap-1 px-4 py-3">
-              <div className="flex items-center justify-between gap-4">
+            <div key={row.key} className="flex flex-col gap-0.5 px-3.5 py-2">
+              <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-[13px] font-medium text-[#1D1D1F]">
+                  <div className="text-[12.5px] font-medium leading-tight text-[#1D1D1F]">
                     {row.label}
                   </div>
-                  <div className="text-[11px] text-[#86868B]">{row.hint}</div>
+                  <div className="text-[11px] leading-snug text-[#86868B]">
+                    {row.hint}
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1">
                   <button
                     type="button"
                     onClick={() =>
                       setRecordingKey(isRecording ? null : row.key)
                     }
-                    className={`flex h-[28px] min-w-[126px] cursor-pointer items-center justify-center rounded-[7px] px-3 text-[12px] font-medium transition-all ${
+                    className={`flex h-[26px] min-w-[116px] cursor-pointer items-center justify-center rounded-[6px] px-2.5 text-[12px] font-medium transition-all ${
                       isRecording
                         ? "border border-[#007AFF] bg-[#007AFF]/[0.08] text-[#007AFF] ring-[3px] ring-[#007AFF]/20"
                         : display
@@ -147,7 +166,7 @@ export function HotkeysTab({ settings, hotkeyErrors, onChange }: Props) {
                     ) : display ? (
                       <span className="tracking-wider">{display}</span>
                     ) : (
-                      <span>Record Shortcut</span>
+                      <span>Record</span>
                     )}
                   </button>
 
@@ -156,7 +175,7 @@ export function HotkeysTab({ settings, hotkeyErrors, onChange }: Props) {
                       type="button"
                       onClick={() => clearHotkey(row.key)}
                       title="Clear shortcut"
-                      className="flex h-[26px] w-[26px] cursor-pointer items-center justify-center rounded-md text-[#AEAEB2] transition hover:bg-black/[0.06] hover:text-[#3A3A3C]"
+                      className="flex h-[24px] w-[24px] cursor-pointer items-center justify-center rounded-md text-[#AEAEB2] transition hover:bg-black/[0.06] hover:text-[#3A3A3C]"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
@@ -165,8 +184,8 @@ export function HotkeysTab({ settings, hotkeyErrors, onChange }: Props) {
               </div>
 
               {err && (
-                <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-[#FF3B30]">
-                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                <div className="mt-0.5 flex items-center gap-1 text-[11px] text-[#FF3B30]">
+                  <AlertCircle className="h-3 w-3 shrink-0" />
                   <span className="truncate">{err}</span>
                 </div>
               )}
@@ -175,7 +194,7 @@ export function HotkeysTab({ settings, hotkeyErrors, onChange }: Props) {
         })}
       </div>
 
-      <div className="mt-4 flex items-center justify-between gap-4">
+      <div className="mt-3 flex items-center justify-between gap-3">
         <span className="text-[11px] leading-snug text-[#86868B]">
           On MacBooks where F1 adjusts brightness, press Fn+F1 or enable
           standard function keys in Keyboard Settings.
@@ -183,7 +202,7 @@ export function HotkeysTab({ settings, hotkeyErrors, onChange }: Props) {
         <button
           type="button"
           onClick={resetHotkeys}
-          className="mac-btn inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-[7px] px-3 py-1 text-[12px] font-medium text-[#1D1D1F] transition"
+          className="mac-btn inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-[6px] px-2.5 py-1 text-[12px] font-medium text-[#1D1D1F] transition"
         >
           <RotateCcw className="h-3 w-3" />
           <span>Defaults</span>

@@ -26,6 +26,14 @@ export async function getHotkeyErrors(): Promise<Record<string, string | null>> 
   return invoke<Record<string, string | null>>("get_hotkey_errors");
 }
 
+export async function setHotkeysSuspended(
+  suspended: boolean,
+): Promise<Record<string, string | null>> {
+  return invoke<Record<string, string | null>>("set_hotkeys_suspended", {
+    suspended,
+  });
+}
+
 export async function checkPermissions(): Promise<PermissionStatus> {
   return invoke<PermissionStatus>("check_permissions");
 }

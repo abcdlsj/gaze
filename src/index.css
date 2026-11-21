@@ -108,7 +108,7 @@
 }
 
 /* Native-like macOS range slider */
-input[type="range"].shotter-slider {
+input[type="range"].gaze-slider {
   -webkit-appearance: none;
   appearance: none;
   height: 4px;
@@ -117,31 +117,31 @@ input[type="range"].shotter-slider {
   cursor: pointer;
 }
 
-input[type="range"].shotter-slider::-webkit-slider-thumb {
+input[type="range"].gaze-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 19px;
-  height: 19px;
+  width: 16px;
+  height: 16px;
   border-radius: 999px;
   background: #ffffff;
-  border: 0.5px solid rgba(0, 0, 0, 0.12);
+  border: 0.5px solid rgba(0, 0, 0, 0.14);
   box-shadow:
-    0 1.5px 4px rgba(0, 0, 0, 0.16),
+    0 1px 3px rgba(0, 0, 0, 0.16),
     0 0.5px 1px rgba(0, 0, 0, 0.08);
   cursor: pointer;
   transition: transform 0.12s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-input[type="range"].shotter-slider::-webkit-slider-thumb:hover {
+input[type="range"].gaze-slider::-webkit-slider-thumb:hover {
   transform: scale(1.04);
 }
 
-input[type="range"].shotter-slider::-webkit-slider-thumb:active {
+input[type="range"].gaze-slider::-webkit-slider-thumb:active {
   transform: scale(1.08);
   background: #f8f8fa;
 }
 
-@keyframes shotterPopIn {
+@keyframes gazePopIn {
   from {
     opacity: 0;
     transform: translateY(-4px) scale(0.98);
@@ -153,7 +153,7 @@ input[type="range"].shotter-slider::-webkit-slider-thumb:active {
 }
 
 .animate-pop-in {
-  animation: shotterPopIn 0.14s cubic-bezier(0.2, 0.85, 0.3, 1) forwards;
+  animation: gazePopIn 0.14s cubic-bezier(0.2, 0.85, 0.3, 1) forwards;
 }
 
 /* Custom subtle scrollbars */

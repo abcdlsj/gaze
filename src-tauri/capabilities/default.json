@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capabilities for all Shotter windows",
+  "description": "Default capabilities for all Gaze windows",
   "windows": ["*"],
   "permissions": [
     "core:default",

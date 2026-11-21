@@ -16,12 +16,13 @@ pub fn prewarm_overlay(app: &AppHandle) {
     if app.get_webview_window(LABEL_OVERLAY).is_some() {
         return;
     }
-    let _ = WebviewWindowBuilder::new(
+    #[allow(unused_mut)]
+    let mut builder = WebviewWindowBuilder::new(
         app,
         LABEL_OVERLAY,
         WebviewUrl::App("index.html?window=overlay".into()),
     )
-    .title("Shotter Capture")
+    .title("Gaze Capture")
     .inner_size(100.0, 100.0)
     .decorations(false)
     .always_on_top(true)
@@ -29,8 +30,20 @@ pub fn prewarm_overlay(app: &AppHandle) {
     .resizable(false)
     .shadow(false)
     .visible(false)
-    .focused(false)
-    .build();
+    .focused(false);
+
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.visible_on_all_workspaces(true);
+    }
+
+    let _ = builder.build();
+}
+
+pub fn is_overlay_visible(app: &AppHandle) -> bool {
+    app.get_webview_window(LABEL_OVERLAY)
+        .and_then(|w| w.is_visible().ok())
+        .unwrap_or(false)
 }
 
 pub fn open_preferences(app: &AppHandle) -> Result<(), String> {
@@ -48,7 +61,7 @@ pub fn open_preferences(app: &AppHandle) -> Result<(), String> {
         WebviewUrl::App("index.html?window=preferences".into()),
     )
     .title("Preferences")
-    .inner_size(536.0, 686.0)
+    .inner_size(500.0, 548.0)
     .resizable(false)
     .maximizable(false)
     .minimizable(true)
@@ -108,7 +121,7 @@ pub fn open_editor(
     let url = format!("index.html?window=editor&id={capture_id}");
     #[allow(unused_mut)]
     let mut builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()))
-        .title("Shotter")
+        .title("Gaze")
         .inner_size(win_w, win_h)
         .min_inner_size(min_w, 440.0)
         .resizable(true);
@@ -136,10 +149,14 @@ pub fn open_editor(
     Ok(())
 }
 
-pub fn open_overlay(app: &AppHandle, info: &OverlaySessionInfo) -> Result<(), String> {
+/// Opens or reuses the pre-warmed capture overlay window.
+/// Returns `Ok(true)` if a pre-warmed window was reused (and notified via event),
+/// or `Ok(false)` if a fresh visible window was created directly.
+pub fn open_overlay(app: &AppHandle, info: &OverlaySessionInfo) -> Result<bool, String> {
     if let Some(existing) = app.get_webview_window(LABEL_OVERLAY) {
         #[cfg(target_os = "macos")]
         {
+            let _ = existing.set_visible_on_all_workspaces(true);
             let _ = existing.set_size(LogicalSize::new(
                 info.monitor_width as f64,
                 info.monitor_height as f64,
@@ -159,8 +176,8 @@ pub fn open_overlay(app: &AppHandle, info: &OverlaySessionInfo) -> Result<(), St
 
         // Notify pre-warmed overlay webview to paint the new snapshot first, then show itself
         // so there is zero stale-frame flash.
-        let _ = existing.emit("overlay-session-ready", info);
-        return Ok(());
+        let _ = app.emit_to(LABEL_OVERLAY, "overlay-session-ready", info);
+        return Ok(true);
     }
 
     #[cfg(target_os = "macos")]
@@ -182,12 +199,13 @@ pub fn open_overlay(app: &AppHandle, info: &OverlaySessionInfo) -> Result<(), St
         )
     };
 
-    let win = WebviewWindowBuilder::new(
+    #[allow(unused_mut)]
+    let mut builder = WebviewWindowBuilder::new(
         app,
         LABEL_OVERLAY,
         WebviewUrl::App("index.html?window=overlay".into()),
     )
-    .title("Shotter Capture")
+    .title("Gaze Capture")
     .position(wx, wy)
     .inner_size(ww, wh)
     .decorations(false)
@@ -195,9 +213,16 @@ pub fn open_overlay(app: &AppHandle, info: &OverlaySessionInfo) -> Result<(), St
     .skip_taskbar(true)
     .resizable(false)
     .shadow(false)
-    .focused(true)
-    .build()
-    .map_err(|e| format!("Failed to open capture overlay: {e}"))?;
+    .focused(true);
+
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.visible_on_all_workspaces(true);
+    }
+
+    let win = builder
+        .build()
+        .map_err(|e| format!("Failed to open capture overlay: {e}"))?;
 
     #[cfg(not(target_os = "macos"))]
     {
@@ -206,7 +231,7 @@ pub fn open_overlay(app: &AppHandle, info: &OverlaySessionInfo) -> Result<(), St
     }
 
     let _ = win.set_focus();
-    Ok(())
+    Ok(false)
 }
 
 pub fn close_overlay(app: &AppHandle) {
@@ -283,7 +308,7 @@ pub fn open_thumbnail(
 
     let url = format!("index.html?window=thumbnail&id={capture_id}");
     WebviewWindowBuilder::new(app, LABEL_THUMBNAIL, WebviewUrl::App(url.into()))
-        .title("Shotter Preview")
+        .title("Gaze Preview")
         .inner_size(284.0, 196.0)
         .position(px, py)
         .decorations(false)

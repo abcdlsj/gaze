@@ -1,12 +1,12 @@
 [package]
-name = "shotter"
+name = "gaze"
 version = "0.1.0"
 description = "Clean, fast cross-platform screenshot, scrolling capture & annotation app"
 authors = ["abcdlsj"]
 edition = "2021"
 
 [lib]
-name = "shotter_lib"
+name = "gaze_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

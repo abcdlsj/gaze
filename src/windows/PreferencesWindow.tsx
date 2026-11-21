@@ -68,19 +68,19 @@ export function PreferencesWindow() {
 
   return (
     <div className="flex h-full w-full flex-col bg-white text-[#1D1D1F]">
-      {/* Luminous macOS-style Unified Preferences Header */}
+      {/* Compact macOS-style Unified Preferences Header */}
       <header
         data-tauri-drag-region
-        className="flex shrink-0 flex-col items-center border-b border-black/[0.07] bg-[#F7F7F9]/95 pb-2.5 pt-[9px]"
+        className="flex shrink-0 flex-col items-center border-b border-black/[0.07] bg-[#F7F7F9]/95 pb-2 pt-[7px]"
       >
         <div
           data-tauri-drag-region
-          className="font-display mb-2.5 text-[13.5px] font-semibold tracking-[-0.015em] text-[#3C3C43]"
+          className="font-display mb-1.5 text-[13px] font-semibold tracking-[-0.015em] text-[#3C3C43]"
         >
           Preferences
         </div>
 
-        <nav className="flex items-center gap-1">
+        <nav className="flex items-center gap-0.5">
           {TABS.map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -89,14 +89,14 @@ export function PreferencesWindow() {
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex w-[74px] flex-col items-center gap-1 rounded-[10px] py-[7px] transition-all duration-150 ${
+                className={`flex w-[66px] flex-col items-center gap-[3px] rounded-[8px] py-[5px] transition-all duration-150 ${
                   active
-                    ? "bg-white text-[#007AFF] shadow-[0_1px_4px_rgba(0,0,0,0.08),0_0.5px_1px_rgba(0,0,0,0.05)]"
+                    ? "bg-white text-[#007AFF] shadow-[0_1px_3px_rgba(0,0,0,0.08),0_0.5px_1px_rgba(0,0,0,0.05)]"
                     : "text-[#6E6E73] hover:bg-black/[0.04] hover:text-[#1D1D1F]"
                 }`}
               >
-                <Icon className="h-[22px] w-[22px] stroke-[1.55]" />
-                <span className="text-[11px] font-medium leading-none tracking-[-0.005em]">
+                <Icon className="h-[18px] w-[18px] stroke-[1.6]" />
+                <span className="text-[10.5px] font-medium leading-none tracking-[-0.005em]">
                   {tab.label}
                 </span>
               </button>
@@ -118,6 +118,7 @@ export function PreferencesWindow() {
             settings={settings}
             hotkeyErrors={hotkeyErrors}
             onChange={(p) => void handlePatch(p)}
+            onHotkeyErrors={setHotkeyErrors}
           />
         ) : activeTab === "editor" ? (
           <EditorTab settings={settings} onChange={(p) => void handlePatch(p)} />

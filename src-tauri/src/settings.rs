@@ -150,21 +150,21 @@ impl Default for AppSettings {
 
 pub fn default_screenshots_folder() -> PathBuf {
     if let Some(desktop) = dirs::desktop_dir() {
-        return desktop.join("Shotter");
+        return desktop.join("Gaze");
     }
     if let Some(pictures) = dirs::picture_dir() {
-        return pictures.join("Shotter");
+        return pictures.join("Gaze");
     }
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("Shotter")
+        .join("Gaze")
 }
 
 pub fn settings_file_path() -> PathBuf {
     let base = dirs::config_dir()
         .or_else(dirs::home_dir)
         .unwrap_or_else(|| PathBuf::from("."));
-    base.join("shotter").join("settings.json")
+    base.join("gaze").join("settings.json")
 }
 
 impl AppSettings {

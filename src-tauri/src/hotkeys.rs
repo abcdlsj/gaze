@@ -45,15 +45,34 @@ where
                         results.insert(action.to_string(), None);
                     }
                     Err(e) => {
-                        results.insert(action.to_string(), Some(format!("Failed to bind '{trimmed}': {e}")));
+                        let msg = format!("Failed to bind '{trimmed}': {e}");
+                        eprintln!("[gaze] hotkey error ({action}): {msg}");
+                        results.insert(action.to_string(), Some(msg));
                     }
                 }
             }
             Err(e) => {
-                results.insert(action.to_string(), Some(format!("Invalid shortcut '{trimmed}': {e}")));
+                let msg = format!("Invalid shortcut '{trimmed}': {e}");
+                eprintln!("[gaze] hotkey parse error ({action}): {msg}");
+                results.insert(action.to_string(), Some(msg));
             }
         }
     }
 
     results
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_shortcuts_parse_cleanly() {
+        let cfg = HotkeyConfig::default();
+        assert!(cfg.capture_area.parse::<Shortcut>().is_ok());
+        assert!(cfg.capture_scrolling.parse::<Shortcut>().is_ok());
+        assert!(cfg.open_clipboard.parse::<Shortcut>().is_ok());
+        assert!("Control+1".parse::<Shortcut>().is_ok());
+        assert!("F1".parse::<Shortcut>().is_ok());
+    }
 }

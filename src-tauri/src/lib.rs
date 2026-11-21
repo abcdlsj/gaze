@@ -16,16 +16,21 @@ use scrolling::ScrollingController;
 use settings::{AfterAreaCrop, AppSettings};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tauri::ipc::Response;
 use tauri::{AppHandle, Manager, RunEvent, State};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 pub struct AppState {
     pub settings: Mutex<AppSettings>,
     pub store: Mutex<CaptureStore>,
     pub hotkey_errors: Mutex<HashMap<String, Option<String>>>,
     pub scrolling: ScrollingController,
+    pub overlay_seq: AtomicU64,
+    pub overlay_shown_seq: AtomicU64,
+    pub hotkeys_suspended: AtomicBool,
 }
 
 impl AppState {
@@ -35,6 +40,9 @@ impl AppState {
             store: Mutex::new(CaptureStore::default()),
             hotkey_errors: Mutex::new(HashMap::new()),
             scrolling: ScrollingController::default(),
+            overlay_seq: AtomicU64::new(0),
+            overlay_shown_seq: AtomicU64::new(0),
+            hotkeys_suspended: AtomicBool::new(false),
         }
     }
 }
@@ -43,40 +51,38 @@ pub fn dispatch_capture_action(app: AppHandle, action: &'static str) {
     // Run off the hotkey callback thread so screen capture never blocks OS event dispatch.
     std::thread::spawn(move || {
         let state = app.state::<Arc<AppState>>();
-        match action {
-            hotkeys::ACTION_AREA => {
-                let _ = start_overlay_capture(&app, &state, "area");
+        let result: Result<(), String> = match action {
+            hotkeys::ACTION_AREA => start_overlay_capture(&app, &state, "area"),
+            hotkeys::ACTION_WINDOW => start_overlay_capture(&app, &state, "window"),
+            hotkeys::ACTION_SCROLLING => start_overlay_capture(&app, &state, "scrolling"),
+            hotkeys::ACTION_FULLSCREEN => capture::capture_fullscreen().and_then(|(img, scale, bounds)| {
+                let meta = state
+                    .store
+                    .lock()
+                    .insert(img, scale, "fullscreen", Some(bounds));
+                finalize_capture(&app, &state, &meta, false)
+            }),
+            hotkeys::ACTION_CLIPBOARD => clipboard::read_image_from_clipboard().and_then(|img| {
+                let meta = state.store.lock().insert(img, 1.0, "clipboard", None);
+                windows::open_editor(
+                    &app,
+                    &meta.id,
+                    meta.width,
+                    meta.height,
+                    meta.scale_factor,
+                    None,
+                )
+            }),
+            _ => Ok(()),
+        };
+        if let Err(err) = result {
+            eprintln!("[gaze] capture action '{action}' failed: {err}");
+            #[cfg(target_os = "macos")]
+            if action != hotkeys::ACTION_CLIPBOARD && !permissions::check_permissions().screen_recording
+            {
+                let _ = permissions::request_screen_recording_prompt();
+                let _ = windows::open_preferences(&app);
             }
-            hotkeys::ACTION_WINDOW => {
-                let _ = start_overlay_capture(&app, &state, "window");
-            }
-            hotkeys::ACTION_SCROLLING => {
-                let _ = start_overlay_capture(&app, &state, "scrolling");
-            }
-            hotkeys::ACTION_FULLSCREEN => {
-                if let Ok((img, scale, bounds)) = capture::capture_fullscreen() {
-                    let meta =
-                        state
-                            .store
-                            .lock()
-                            .insert(img, scale, "fullscreen", Some(bounds));
-                    let _ = finalize_capture(&app, &state, &meta, false);
-                }
-            }
-            hotkeys::ACTION_CLIPBOARD => {
-                if let Ok(img) = clipboard::read_image_from_clipboard() {
-                    let meta = state.store.lock().insert(img, 1.0, "clipboard", None);
-                    let _ = windows::open_editor(
-                        &app,
-                        &meta.id,
-                        meta.width,
-                        meta.height,
-                        meta.scale_factor,
-                        None,
-                    );
-                }
-            }
-            _ => {}
         }
     });
 }
@@ -95,13 +101,36 @@ pub fn start_overlay_capture_on_monitor(
     mode: &str,
     monitor_index: Option<usize>,
 ) -> Result<(), String> {
+    let was_visible = windows::is_overlay_visible(app);
     windows::close_overlay(app);
-    // Tiny pause so any existing overlay window is unmapped before capturing desktop.
-    std::thread::sleep(std::time::Duration::from_millis(35));
+    if was_visible {
+        // Tiny pause so any existing overlay window is unmapped before capturing desktop.
+        std::thread::sleep(std::time::Duration::from_millis(35));
+    }
     let session = capture::capture_overlay_session(mode, monitor_index)?;
     let info = session.info();
     state.store.lock().overlay = Some(session);
-    windows::open_overlay(app, &info)?;
+    let seq = state.overlay_seq.fetch_add(1, Ordering::SeqCst) + 1;
+    let reused = windows::open_overlay(app, &info)?;
+    if reused {
+        // Safety fallback: if the pre-warmed webview didn't call show_overlay_window within 220ms
+        // (e.g. still initializing on first boot), show & focus it directly so capture never stalls.
+        let app_clone = app.clone();
+        let state_clone = state.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(220));
+            if state_clone.overlay_shown_seq.load(Ordering::SeqCst) < seq
+                && state_clone.store.lock().overlay.is_some()
+            {
+                if let Some(win) = app_clone.get_webview_window(windows::LABEL_OVERLAY) {
+                    let _ = win.show();
+                    let _ = win.set_focus();
+                }
+            }
+        });
+    } else {
+        state.overlay_shown_seq.store(seq, Ordering::SeqCst);
+    }
     Ok(())
 }
 
@@ -168,10 +197,33 @@ fn update_settings(
         };
     }
 
-    let errors = hotkeys::sync_hotkeys(&app, &new_settings.hotkeys, dispatch_capture_action);
-    *state.hotkey_errors.lock() = errors.clone();
+    let errors = if state.hotkeys_suspended.load(Ordering::SeqCst) {
+        state.hotkey_errors.lock().clone()
+    } else {
+        let errs = hotkeys::sync_hotkeys(&app, &new_settings.hotkeys, dispatch_capture_action);
+        *state.hotkey_errors.lock() = errs.clone();
+        errs
+    };
     *state.settings.lock() = new_settings;
     Ok(errors)
+}
+
+#[tauri::command]
+fn set_hotkeys_suspended(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+    suspended: bool,
+) -> HashMap<String, Option<String>> {
+    state.hotkeys_suspended.store(suspended, Ordering::SeqCst);
+    if suspended {
+        let _ = app.global_shortcut().unregister_all();
+        state.hotkey_errors.lock().clone()
+    } else {
+        let hotkeys_cfg = state.settings.lock().hotkeys.clone();
+        let errors = hotkeys::sync_hotkeys(&app, &hotkeys_cfg, dispatch_capture_action);
+        *state.hotkey_errors.lock() = errors.clone();
+        errors
+    }
 }
 
 #[tauri::command]
@@ -298,7 +350,9 @@ fn get_overlay_windows(
 }
 
 #[tauri::command]
-fn show_overlay_window(app: AppHandle) {
+fn show_overlay_window(app: AppHandle, state: State<'_, Arc<AppState>>) {
+    let seq = state.overlay_seq.load(Ordering::SeqCst);
+    state.overlay_shown_seq.store(seq, Ordering::SeqCst);
     if let Some(win) = app.get_webview_window(windows::LABEL_OVERLAY) {
         let _ = win.show();
         let _ = win.set_focus();
@@ -622,13 +676,14 @@ pub fn run() {
             // Pre-warm hidden overlay webview so F1 capture opens instantaneously.
             windows::prewarm_overlay(&handle);
 
-            // Open Preferences on first launch so user immediately sees Shotter is ready.
+            // Open Preferences on first launch so user immediately sees Gaze is ready.
             let _ = windows::open_preferences(&handle);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_settings,
             update_settings,
+            set_hotkeys_suspended,
             reset_settings,
             get_hotkey_errors,
             check_permissions,
@@ -660,9 +715,9 @@ pub fn run() {
             stop_scrolling_capture,
         ])
         .build(tauri::generate_context!())
-        .expect("error while building Shotter");
+        .expect("error while building Gaze");
 
-    // Keep Shotter running in the menu bar / tray even when all windows are closed.
+    // Keep Gaze running in the menu bar / tray even when all windows are closed.
     app.run(|_app_handle, event| {
         if let RunEvent::ExitRequested { api, code, .. } = event {
             if code.is_none() {
