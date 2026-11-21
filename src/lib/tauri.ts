@@ -50,6 +50,41 @@ export async function getOverlaySession(): Promise<OverlaySessionInfo> {
   return invoke<OverlaySessionInfo>("get_overlay_session");
 }
 
+export interface RawRgbaImage {
+  width: number;
+  height: number;
+  data: Uint8ClampedArray;
+}
+
+function unpackRawRgba(buf: ArrayBuffer): RawRgbaImage {
+  const view = new DataView(buf);
+  const width = view.getUint32(0, true);
+  const height = view.getUint32(4, true);
+  const data = new Uint8ClampedArray(buf, 8, width * height * 4);
+  return { width, height, data };
+}
+
+export async function getOverlayImageRaw(): Promise<RawRgbaImage> {
+  const buf = await invoke<ArrayBuffer>("get_overlay_image_raw");
+  return unpackRawRgba(buf);
+}
+
+export async function getOverlayWindows(): Promise<
+  import("../types").WindowRect[]
+> {
+  return invoke("get_overlay_windows");
+}
+
+export async function showOverlayWindow(): Promise<void> {
+  return invoke("show_overlay_window");
+}
+
+export async function switchOverlayMonitor(
+  mode: "area" | "window" | "scrolling",
+): Promise<void> {
+  return invoke("switch_overlay_monitor", { mode });
+}
+
 export async function getOverlayImageBytes(): Promise<Uint8Array> {
   const buf = await invoke<ArrayBuffer>("get_overlay_image_png");
   return new Uint8Array(buf);
@@ -101,6 +136,11 @@ export async function getCaptureMeta(id: string): Promise<CaptureMeta> {
 export async function getCaptureImageBytes(id: string): Promise<Uint8Array> {
   const buf = await invoke<ArrayBuffer>("get_capture_image_png", { id });
   return new Uint8Array(buf);
+}
+
+export async function getCaptureImageRaw(id: string): Promise<RawRgbaImage> {
+  const buf = await invoke<ArrayBuffer>("get_capture_image_raw", { id });
+  return unpackRawRgba(buf);
 }
 
 async function uint8ToBase64(bytes: Uint8Array): Promise<string> {

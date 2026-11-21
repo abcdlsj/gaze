@@ -75,6 +75,9 @@ export interface CaptureMeta {
 
 export interface OverlaySessionInfo {
   monitor_id: number;
+  monitor_name: string;
+  monitor_index: number;
+  monitor_count: number;
   monitor_x: number;
   monitor_y: number;
   monitor_width: number;

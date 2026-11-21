@@ -42,22 +42,22 @@ export function AdvancedTab({ onResetDefaults }: Props) {
   };
 
   return (
-    <div className="flex flex-col gap-5 px-7 py-5">
+    <div className="flex flex-col gap-5 px-8 py-5">
       {perms?.platform === "macos" && (
-        <div className="rounded-xl border border-neutral-200/80 bg-white p-4">
+        <div className="rounded-xl border border-black/[0.08] bg-[#FAFAFC] p-4">
           <div className="mb-3 flex items-center justify-between">
             <div>
-              <h3 className="text-[13px] font-semibold text-neutral-800">
+              <h3 className="text-[13.5px] font-semibold tracking-[-0.01em] text-[#1D1D1F]">
                 macOS Permissions
               </h3>
-              <p className="text-[11px] text-neutral-500">
+              <p className="text-[11.5px] text-[#86868B]">
                 Required for screen capture and automatic scrolling screenshots.
               </p>
             </div>
             <button
               type="button"
               onClick={() => void loadPerms()}
-              className="inline-flex items-center gap-1 rounded-md border border-neutral-200 px-2 py-1 text-[11px] text-neutral-600 transition hover:bg-neutral-50"
+              className="mac-btn inline-flex cursor-pointer items-center gap-1 rounded-[7px] px-2.5 py-1 text-[11.5px] font-medium text-[#1D1D1F] transition"
             >
               <RefreshCw className="h-3 w-3" />
               <span>Refresh</span>
@@ -65,18 +65,18 @@ export function AdvancedTab({ onResetDefaults }: Props) {
           </div>
 
           <div className="space-y-2.5">
-            <div className="flex items-center justify-between rounded-lg bg-neutral-50 px-3 py-2.5">
+            <div className="flex items-center justify-between rounded-lg border border-black/[0.06] bg-white px-3.5 py-2.5">
               <div className="flex items-center gap-2.5">
                 {perms.screen_recording ? (
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                  <CheckCircle2 className="h-4 w-4 text-[#34C759]" />
                 ) : (
-                  <ShieldAlert className="h-4 w-4 text-amber-500" />
+                  <ShieldAlert className="h-4 w-4 text-[#FF9500]" />
                 )}
                 <div>
-                  <div className="text-[12.5px] font-medium text-neutral-800">
+                  <div className="text-[12.5px] font-medium text-[#1D1D1F]">
                     Screen Recording
                   </div>
-                  <div className="text-[11px] text-neutral-500">
+                  <div className="text-[11px] text-[#86868B]">
                     {perms.screen_recording
                       ? "Granted — ready to capture screens & windows"
                       : "Needed to capture screen pixels"}
@@ -90,25 +90,25 @@ export function AdvancedTab({ onResetDefaults }: Props) {
                     void requestScreenPermission();
                     void openPermissionSettings("screen_recording");
                   }}
-                  className="rounded-md bg-[#0A84FF] px-2.5 py-1 text-[11.5px] font-medium text-white transition hover:bg-blue-600"
+                  className="mac-blue-fill cursor-pointer rounded-[7px] px-3 py-1 text-[11.5px] font-medium text-white transition hover:brightness-105"
                 >
                   Grant
                 </button>
               )}
             </div>
 
-            <div className="flex items-center justify-between rounded-lg bg-neutral-50 px-3 py-2.5">
+            <div className="flex items-center justify-between rounded-lg border border-black/[0.06] bg-white px-3.5 py-2.5">
               <div className="flex items-center gap-2.5">
                 {perms.accessibility ? (
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                  <CheckCircle2 className="h-4 w-4 text-[#34C759]" />
                 ) : (
-                  <ShieldAlert className="h-4 w-4 text-amber-500" />
+                  <ShieldAlert className="h-4 w-4 text-[#FF9500]" />
                 )}
                 <div>
-                  <div className="text-[12.5px] font-medium text-neutral-800">
+                  <div className="text-[12.5px] font-medium text-[#1D1D1F]">
                     Accessibility
                   </div>
-                  <div className="text-[11px] text-neutral-500">
+                  <div className="text-[11px] text-[#86868B]">
                     {perms.accessibility
                       ? "Granted — ready for auto-scrolling capture"
                       : "Needed for auto-scroll wheel simulation"}
@@ -119,7 +119,7 @@ export function AdvancedTab({ onResetDefaults }: Props) {
                 <button
                   type="button"
                   onClick={() => void openPermissionSettings("accessibility")}
-                  className="rounded-md bg-[#0A84FF] px-2.5 py-1 text-[11.5px] font-medium text-white transition hover:bg-blue-600"
+                  className="mac-blue-fill cursor-pointer rounded-[7px] px-3 py-1 text-[11.5px] font-medium text-white transition hover:brightness-105"
                 >
                   Open Settings
                 </button>
@@ -129,15 +129,15 @@ export function AdvancedTab({ onResetDefaults }: Props) {
         </div>
       )}
 
-      <div className="rounded-xl border border-neutral-200/80 bg-white p-4">
-        <h3 className="text-[13px] font-semibold text-neutral-800">
+      <div className="rounded-xl border border-black/[0.08] bg-[#FAFAFC] p-4">
+        <h3 className="text-[13.5px] font-semibold tracking-[-0.01em] text-[#1D1D1F]">
           Storage & Maintenance
         </h3>
         <div className="mt-3 flex flex-wrap items-center gap-2.5">
           <button
             type="button"
             onClick={() => void openScreenshotsFolder()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-300 bg-neutral-50 px-3 py-1.5 text-[12.5px] text-neutral-700 transition hover:bg-neutral-100"
+            className="mac-btn inline-flex cursor-pointer items-center gap-1.5 rounded-[7px] px-3 py-1.5 text-[12.5px] font-medium text-[#1D1D1F] transition"
           >
             <FolderOpen className="h-3.5 w-3.5" />
             <span>Open Screenshots Folder</span>
@@ -146,10 +146,12 @@ export function AdvancedTab({ onResetDefaults }: Props) {
           <button
             type="button"
             onClick={() => void handleReset()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-[12.5px] text-neutral-700 transition hover:bg-red-50 hover:border-red-200 hover:text-red-600"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-[7px] border border-black/[0.1] bg-white px-3 py-1.5 text-[12.5px] font-medium text-[#3A3A3C] transition hover:border-[#FF3B30]/40 hover:bg-[#FF3B30]/[0.05] hover:text-[#FF3B30]"
           >
             <RotateCcw className="h-3.5 w-3.5" />
-            <span>{resetDone ? "Defaults Restored!" : "Reset All Settings"}</span>
+            <span>
+              {resetDone ? "Defaults Restored!" : "Reset All Settings"}
+            </span>
           </button>
         </div>
       </div>

@@ -67,20 +67,20 @@ export function PreferencesWindow() {
   }, []);
 
   return (
-    <div className="flex h-full w-full flex-col bg-[#FAFAFB] text-neutral-900">
-      {/* Unified macOS-style Preferences Header */}
+    <div className="flex h-full w-full flex-col bg-white text-[#1D1D1F]">
+      {/* Luminous macOS-style Unified Preferences Header */}
       <header
         data-tauri-drag-region
-        className="flex shrink-0 flex-col items-center border-b border-neutral-200/80 bg-[#F4F4F5]/95 pb-2.5 pt-2"
+        className="flex shrink-0 flex-col items-center border-b border-black/[0.07] bg-[#F7F7F9]/95 pb-2.5 pt-[9px]"
       >
         <div
           data-tauri-drag-region
-          className="mb-2 text-[13px] font-semibold tracking-[-0.01em] text-neutral-700"
+          className="font-display mb-2.5 text-[13.5px] font-semibold tracking-[-0.015em] text-[#3C3C43]"
         >
           Preferences
         </div>
 
-        <nav className="flex items-center gap-1.5">
+        <nav className="flex items-center gap-1">
           {TABS.map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -89,14 +89,14 @@ export function PreferencesWindow() {
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex w-[70px] flex-col items-center gap-1 rounded-[10px] py-1.5 transition ${
+                className={`flex w-[74px] flex-col items-center gap-1 rounded-[10px] py-[7px] transition-all duration-150 ${
                   active
-                    ? "bg-white text-[#0A84FF] shadow-[0_1px_3px_rgba(0,0,0,0.08),0_0.5px_1px_rgba(0,0,0,0.06)]"
-                    : "text-neutral-600 hover:bg-black/[0.04]"
+                    ? "bg-white text-[#007AFF] shadow-[0_1px_4px_rgba(0,0,0,0.08),0_0.5px_1px_rgba(0,0,0,0.05)]"
+                    : "text-[#6E6E73] hover:bg-black/[0.04] hover:text-[#1D1D1F]"
                 }`}
               >
-                <Icon className="h-[22px] w-[22px] stroke-[1.6]" />
-                <span className="text-[11px] font-medium leading-none">
+                <Icon className="h-[22px] w-[22px] stroke-[1.55]" />
+                <span className="text-[11px] font-medium leading-none tracking-[-0.005em]">
                   {tab.label}
                 </span>
               </button>
@@ -105,10 +105,10 @@ export function PreferencesWindow() {
         </nav>
       </header>
 
-      {/* Body */}
-      <main className="flex-1 overflow-y-auto">
+      {/* Clean White Content Surface */}
+      <main className="flex-1 overflow-y-auto bg-white">
         {!settings ? (
-          <div className="flex h-full items-center justify-center text-[12px] text-neutral-400">
+          <div className="flex h-full items-center justify-center text-[12px] text-[#86868B]">
             Loading…
           </div>
         ) : activeTab === "general" ? (

@@ -54,20 +54,25 @@ pub fn dispatch_capture_action(app: AppHandle, action: &'static str) {
                 let _ = start_overlay_capture(&app, &state, "scrolling");
             }
             hotkeys::ACTION_FULLSCREEN => {
-                if let Ok((img, scale)) = capture::capture_fullscreen() {
-                    let meta = state.store.lock().insert(img, scale, "fullscreen");
+                if let Ok((img, scale, bounds)) = capture::capture_fullscreen() {
+                    let meta =
+                        state
+                            .store
+                            .lock()
+                            .insert(img, scale, "fullscreen", Some(bounds));
                     let _ = finalize_capture(&app, &state, &meta, false);
                 }
             }
             hotkeys::ACTION_CLIPBOARD => {
                 if let Ok(img) = clipboard::read_image_from_clipboard() {
-                    let meta = state.store.lock().insert(img, 1.0, "clipboard");
+                    let meta = state.store.lock().insert(img, 1.0, "clipboard", None);
                     let _ = windows::open_editor(
                         &app,
                         &meta.id,
                         meta.width,
                         meta.height,
                         meta.scale_factor,
+                        None,
                     );
                 }
             }
@@ -81,10 +86,19 @@ pub fn start_overlay_capture(
     state: &Arc<AppState>,
     mode: &str,
 ) -> Result<(), String> {
+    start_overlay_capture_on_monitor(app, state, mode, None)
+}
+
+pub fn start_overlay_capture_on_monitor(
+    app: &AppHandle,
+    state: &Arc<AppState>,
+    mode: &str,
+    monitor_index: Option<usize>,
+) -> Result<(), String> {
     windows::close_overlay(app);
     // Tiny pause so any existing overlay window is unmapped before capturing desktop.
-    std::thread::sleep(std::time::Duration::from_millis(40));
-    let session = capture::capture_overlay_session(mode)?;
+    std::thread::sleep(std::time::Duration::from_millis(35));
+    let session = capture::capture_overlay_session(mode, monitor_index)?;
     let info = session.info();
     state.store.lock().overlay = Some(session);
     windows::open_overlay(app, &info)?;
@@ -98,11 +112,11 @@ pub fn finalize_capture(
     is_area_crop: bool,
 ) -> Result<(), String> {
     let settings = state.settings.lock().clone();
-    let img_clone = {
+    let (img_clone, mon_bounds) = {
         let store = state.store.lock();
         store
             .get(&meta.id)
-            .map(|c| c.image.clone())
+            .map(|c| (c.image.clone(), c.monitor_bounds))
             .ok_or_else(|| "Capture not found".to_string())?
     };
 
@@ -115,9 +129,16 @@ pub fn finalize_capture(
 
     if settings.after_screenshot_show {
         if is_area_crop && settings.after_area_crop == AfterAreaCrop::Thumbnail {
-            windows::open_thumbnail(app, &meta.id)?;
+            windows::open_thumbnail(app, &meta.id, mon_bounds, meta.scale_factor)?;
         } else {
-            windows::open_editor(app, &meta.id, meta.width, meta.height, meta.scale_factor)?;
+            windows::open_editor(
+                app,
+                &meta.id,
+                meta.width,
+                meta.height,
+                meta.scale_factor,
+                mon_bounds,
+            )?;
         }
     }
     Ok(())
@@ -197,14 +218,24 @@ fn trigger_capture(
         "window" => start_overlay_capture(&app, &state, "window"),
         "scrolling" => start_overlay_capture(&app, &state, "scrolling"),
         "fullscreen" => {
-            let (img, scale) = capture::capture_fullscreen()?;
-            let meta = state.store.lock().insert(img, scale, "fullscreen");
+            let (img, scale, bounds) = capture::capture_fullscreen()?;
+            let meta = state
+                .store
+                .lock()
+                .insert(img, scale, "fullscreen", Some(bounds));
             finalize_capture(&app, &state, &meta, false)
         }
         "clipboard" => {
             let img = clipboard::read_image_from_clipboard()?;
-            let meta = state.store.lock().insert(img, 1.0, "clipboard");
-            windows::open_editor(&app, &meta.id, meta.width, meta.height, meta.scale_factor)
+            let meta = state.store.lock().insert(img, 1.0, "clipboard", None);
+            windows::open_editor(
+                &app,
+                &meta.id,
+                meta.width,
+                meta.height,
+                meta.scale_factor,
+                None,
+            )
         }
         other => Err(format!("Unknown capture mode: {other}")),
     }
@@ -235,9 +266,68 @@ fn get_overlay_image_png(state: State<'_, Arc<AppState>>) -> Result<Response, St
 }
 
 #[tauri::command]
+fn get_overlay_image_raw(state: State<'_, Arc<AppState>>) -> Result<Response, String> {
+    let packed = state
+        .store
+        .lock()
+        .overlay
+        .as_ref()
+        .map(|s| capture::pack_raw_rgba(&s.image))
+        .ok_or_else(|| "No active overlay session".to_string())?;
+    Ok(Response::new(packed))
+}
+
+#[tauri::command]
+fn get_overlay_windows(
+    state: State<'_, Arc<AppState>>,
+) -> Result<Vec<capture::WindowRect>, String> {
+    let mut store = state.store.lock();
+    let session = store
+        .overlay
+        .as_mut()
+        .ok_or_else(|| "No active overlay session".to_string())?;
+    if session.windows.is_empty() {
+        session.windows = capture::enumerate_monitor_windows(
+            session.monitor_x,
+            session.monitor_y,
+            session.monitor_width,
+            session.monitor_height,
+        );
+    }
+    Ok(session.windows.clone())
+}
+
+#[tauri::command]
+fn show_overlay_window(app: AppHandle) {
+    if let Some(win) = app.get_webview_window(windows::LABEL_OVERLAY) {
+        let _ = win.show();
+        let _ = win.set_focus();
+    }
+}
+
+#[tauri::command]
 fn cancel_overlay(app: AppHandle, state: State<'_, Arc<AppState>>) {
     state.store.lock().overlay = None;
     windows::close_overlay(&app);
+}
+
+#[tauri::command]
+fn switch_overlay_monitor(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+    mode: String,
+) -> Result<(), String> {
+    let next_index = {
+        let store = state.store.lock();
+        let Some(curr) = store.overlay.as_ref() else {
+            return Err("No active overlay session".to_string());
+        };
+        if curr.monitor_count <= 1 {
+            return Ok(());
+        }
+        (curr.monitor_index + 1) % curr.monitor_count
+    };
+    start_overlay_capture_on_monitor(&app, &state, &mode, Some(next_index))
 }
 
 #[tauri::command]
@@ -250,20 +340,23 @@ fn complete_area_selection(
     height: f64,
     action: String,
 ) -> Result<CaptureMeta, String> {
-    let (cropped, scale) = {
+    let (cropped, scale, bounds) = {
         let store = state.store.lock();
         let session = store
             .overlay
             .as_ref()
             .ok_or_else(|| "No active overlay session".to_string())?;
         let img = capture::crop_from_session(session, x, y, width, height)?;
-        (img, session.scale_factor)
+        (img, session.scale_factor, session.bounds())
     };
 
     windows::close_overlay(&app);
     state.store.lock().overlay = None;
 
-    let meta = state.store.lock().insert(cropped.clone(), scale, "area");
+    let meta = state
+        .store
+        .lock()
+        .insert(cropped.clone(), scale, "area", Some(bounds));
     let settings = state.settings.lock().clone();
 
     match action.as_str() {
@@ -277,7 +370,14 @@ fn complete_area_selection(
             windows::open_pin(&app, &meta.id, meta.width, meta.height, meta.scale_factor)?;
         }
         "editor" => {
-            windows::open_editor(&app, &meta.id, meta.width, meta.height, meta.scale_factor)?;
+            windows::open_editor(
+                &app,
+                &meta.id,
+                meta.width,
+                meta.height,
+                meta.scale_factor,
+                Some(bounds),
+            )?;
         }
         _ => {
             finalize_capture(&app, &state, &meta, true)?;
@@ -295,12 +395,13 @@ fn complete_window_selection(
 ) -> Result<CaptureMeta, String> {
     let settings = state.settings.lock().clone();
     let session_copy = state.store.lock().overlay.clone();
+    let bounds = session_copy.as_ref().map(|s| s.bounds());
     windows::close_overlay(&app);
     state.store.lock().overlay = None;
 
     let (img, scale) =
         capture::capture_window_with_background(window_id, &settings, session_copy.as_ref())?;
-    let meta = state.store.lock().insert(img, scale, "window");
+    let meta = state.store.lock().insert(img, scale, "window", bounds);
     finalize_capture(&app, &state, &meta, false)?;
     Ok(meta)
 }
@@ -331,6 +432,20 @@ fn get_capture_image_png(
         .ok_or_else(|| format!("Capture {id} not found"))?;
     let bytes = capture::encode_png(&img)?;
     Ok(Response::new(bytes))
+}
+
+#[tauri::command]
+fn get_capture_image_raw(
+    state: State<'_, Arc<AppState>>,
+    id: String,
+) -> Result<Response, String> {
+    let packed = state
+        .store
+        .lock()
+        .get(&id)
+        .map(|c| capture::pack_raw_rgba(&c.image))
+        .ok_or_else(|| format!("Capture {id} not found"))?;
+    Ok(Response::new(packed))
 }
 
 #[tauri::command]
@@ -407,7 +522,7 @@ fn pin_image_bytes(
     let img = image::load_from_memory(&png_bytes)
         .map_err(|e| format!("Failed to decode pinned image: {e}"))?
         .to_rgba8();
-    let meta = state.store.lock().insert(img, scale_factor, "pin");
+    let meta = state.store.lock().insert(img, scale_factor, "pin", None);
     windows::open_pin(&app, &meta.id, meta.width, meta.height, meta.scale_factor)?;
     Ok(meta)
 }
@@ -418,13 +533,20 @@ fn open_editor_for_capture(
     state: State<'_, Arc<AppState>>,
     id: String,
 ) -> Result<(), String> {
-    let meta = state
+    let (meta, bounds) = state
         .store
         .lock()
         .get(&id)
-        .map(|c| c.meta())
+        .map(|c| (c.meta(), c.monitor_bounds))
         .ok_or_else(|| format!("Capture {id} not found"))?;
-    windows::open_editor(&app, &meta.id, meta.width, meta.height, meta.scale_factor)
+    windows::open_editor(
+        &app,
+        &meta.id,
+        meta.width,
+        meta.height,
+        meta.scale_factor,
+        bounds,
+    )
 }
 
 #[tauri::command]
@@ -497,6 +619,9 @@ pub fn run() {
                 hotkeys::sync_hotkeys(&handle, &settings.hotkeys, dispatch_capture_action);
             *app_state.hotkey_errors.lock() = errors;
 
+            // Pre-warm hidden overlay webview so F1 capture opens instantaneously.
+            windows::prewarm_overlay(&handle);
+
             // Open Preferences on first launch so user immediately sees Shotter is ready.
             let _ = windows::open_preferences(&handle);
             Ok(())
@@ -512,11 +637,16 @@ pub fn run() {
             trigger_capture,
             get_overlay_session,
             get_overlay_image_png,
+            get_overlay_image_raw,
+            get_overlay_windows,
+            show_overlay_window,
+            switch_overlay_monitor,
             cancel_overlay,
             complete_area_selection,
             complete_window_selection,
             get_capture_meta,
             get_capture_image_png,
+            get_capture_image_raw,
             copy_image_bytes,
             copy_capture_by_id,
             copy_text_to_clipboard,

@@ -1,12 +1,17 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "./index.css";
+import { isMacPlatform } from "./lib/hotkeys";
 import { PreferencesWindow } from "./windows/PreferencesWindow";
 import { EditorWindow } from "./windows/EditorWindow";
 import { OverlayWindow } from "./windows/OverlayWindow";
 import { PinWindow } from "./windows/PinWindow";
 import { ThumbnailWindow } from "./windows/ThumbnailWindow";
 import { ScrollHudWindow } from "./windows/ScrollHudWindow";
+
+document.documentElement.dataset.platform = isMacPlatform()
+  ? "macos"
+  : "windows";
 
 function AppRouter() {
   const params = new URLSearchParams(window.location.search);

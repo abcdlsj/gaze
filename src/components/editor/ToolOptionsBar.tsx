@@ -6,7 +6,7 @@ const COLORS = [
   "#F97316",
   "#EAB308",
   "#22C55E",
-  "#0A84FF",
+  "#007AFF",
   "#8B5CF6",
   "#18181B",
   "#FFFFFF",
@@ -66,21 +66,21 @@ export function ToolOptionsBar({
   }
 
   return (
-    <div className="pointer-events-auto absolute left-1/2 top-3 z-20 flex -translate-x-1/2 items-center gap-3 rounded-full border border-neutral-200/90 bg-white/95 px-3.5 py-1.5 text-[12px] text-neutral-700 shadow-lg backdrop-blur-md">
+    <div className="animate-pop-in pointer-events-auto absolute left-1/2 top-3 z-20 flex -translate-x-1/2 items-center gap-3 rounded-full border border-black/[0.08] bg-white/92 px-3.5 py-1.5 text-[12px] text-[#1D1D1F] shadow-[0_8px_28px_rgba(0,0,0,0.12)] backdrop-blur-xl">
       {activeTool === "crop" ? (
         <div className="flex items-center gap-2">
-          <span className="text-neutral-500">Drag handles to crop</span>
+          <span className="text-[#6E6E73]">Drag handles to crop</span>
           <button
             type="button"
             onClick={onApplyCrop}
-            className="inline-flex items-center gap-1 rounded-full bg-[#0A84FF] px-3 py-1 text-[11.5px] font-medium text-white hover:bg-blue-600"
+            className="mac-blue-fill inline-flex cursor-pointer items-center gap-1 rounded-full px-3 py-1 text-[11.5px] font-medium text-white transition hover:brightness-105"
           >
             <Check className="h-3.5 w-3.5" /> Apply
           </button>
           <button
             type="button"
             onClick={onCancelCrop}
-            className="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2.5 py-1 text-[11.5px] text-neutral-600 hover:bg-neutral-200"
+            className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-black/[0.05] px-2.5 py-1 text-[11.5px] text-[#424245] transition hover:bg-black/[0.09]"
           >
             <X className="h-3.5 w-3.5" /> Cancel
           </button>
@@ -94,7 +94,7 @@ export function ToolOptionsBar({
               onChange={(e) =>
                 onBackdropChange({ ...backdrop, enabled: e.target.checked })
               }
-              className="accent-[#0A84FF]"
+              className="accent-[#007AFF]"
             />
             <span>Backdrop</span>
           </label>
@@ -112,15 +112,15 @@ export function ToolOptionsBar({
                   })
                 }
                 style={{ background: b.value }}
-                className={`h-5 w-5 rounded-full border border-black/15 transition ${
+                className={`h-5 w-5 cursor-pointer rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.14)] transition ${
                   backdrop.background === b.value && backdrop.enabled
-                    ? "ring-2 ring-[#0A84FF] ring-offset-1"
+                    ? "ring-2 ring-[#007AFF] ring-offset-1"
                     : "hover:scale-110"
                 }`}
               />
             ))}
           </div>
-          <label className="flex items-center gap-1.5 text-[11.5px] text-neutral-500">
+          <label className="flex items-center gap-1.5 text-[11.5px] text-[#6E6E73]">
             <span>Pad</span>
             <input
               type="range"
@@ -134,10 +134,10 @@ export function ToolOptionsBar({
                   padding: Number(e.target.value),
                 })
               }
-              className="w-16 accent-[#0A84FF]"
+              className="w-16 accent-[#007AFF]"
             />
           </label>
-          <label className="flex items-center gap-1.5 text-[11.5px] text-neutral-500">
+          <label className="flex items-center gap-1.5 text-[11.5px] text-[#6E6E73]">
             <span>Round</span>
             <input
               type="range"
@@ -151,20 +151,20 @@ export function ToolOptionsBar({
                   cornerRadius: Number(e.target.value),
                 })
               }
-              className="w-14 accent-[#0A84FF]"
+              className="w-14 accent-[#007AFF]"
             />
           </label>
         </div>
       ) : activeTool === "blur" || activeTool === "pixelate" ? (
         <div className="flex items-center gap-3">
-          <div className="flex rounded-full bg-neutral-100 p-0.5 text-[11.5px]">
+          <div className="flex rounded-full bg-black/[0.06] p-0.5 text-[11.5px]">
             <button
               type="button"
               onClick={() => onSelectTool("blur")}
-              className={`rounded-full px-2.5 py-0.5 transition ${
+              className={`cursor-pointer rounded-full px-2.5 py-0.5 transition ${
                 activeTool === "blur"
-                  ? "bg-white font-medium text-neutral-900 shadow-xs"
-                  : "text-neutral-500"
+                  ? "bg-white font-medium text-[#1D1D1F] shadow-xs"
+                  : "text-[#6E6E73]"
               }`}
             >
               Blur
@@ -172,16 +172,16 @@ export function ToolOptionsBar({
             <button
               type="button"
               onClick={() => onSelectTool("pixelate")}
-              className={`rounded-full px-2.5 py-0.5 transition ${
+              className={`cursor-pointer rounded-full px-2.5 py-0.5 transition ${
                 activeTool === "pixelate"
-                  ? "bg-white font-medium text-neutral-900 shadow-xs"
-                  : "text-neutral-500"
+                  ? "bg-white font-medium text-[#1D1D1F] shadow-xs"
+                  : "text-[#6E6E73]"
               }`}
             >
               Pixelate
             </button>
           </div>
-          <label className="flex items-center gap-2 text-[11.5px] text-neutral-500">
+          <label className="flex items-center gap-2 text-[11.5px] text-[#6E6E73]">
             <span>Strength</span>
             <input
               type="range"
@@ -189,13 +189,12 @@ export function ToolOptionsBar({
               max={28}
               value={blurStrength}
               onChange={(e) => onBlurStrengthChange(Number(e.target.value))}
-              className="w-20 accent-[#0A84FF]"
+              className="w-20 accent-[#007AFF]"
             />
           </label>
         </div>
       ) : (
         <>
-          {/* Color swatches */}
           <div className="flex items-center gap-1.5">
             {COLORS.map((hex) => (
               <button
@@ -203,19 +202,19 @@ export function ToolOptionsBar({
                 type="button"
                 onClick={() => onColorChange(hex)}
                 style={{ backgroundColor: hex }}
-                className={`h-[18px] w-[18px] rounded-full border border-black/15 transition ${
+                className={`h-[18px] w-[18px] cursor-pointer rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.16)] transition ${
                   color.toLowerCase() === hex.toLowerCase()
-                    ? "ring-2 ring-[#0A84FF] ring-offset-1"
+                    ? "ring-2 ring-[#007AFF] ring-offset-1"
                     : "hover:scale-110"
                 }`}
               />
             ))}
           </div>
 
-          <span className="h-4 w-px bg-neutral-200" />
+          <span className="h-4 w-px bg-black/[0.08]" />
 
           {activeTool === "text" ? (
-            <label className="flex items-center gap-2 text-[11.5px] text-neutral-500">
+            <label className="flex items-center gap-2 text-[11.5px] text-[#6E6E73]">
               <span>Size</span>
               <input
                 type="range"
@@ -223,14 +222,14 @@ export function ToolOptionsBar({
                 max={48}
                 value={fontSize}
                 onChange={(e) => onFontSizeChange(Number(e.target.value))}
-                className="w-20 accent-[#0A84FF]"
+                className="w-20 accent-[#007AFF]"
               />
-              <span className="w-7 text-right tabular-nums text-neutral-700">
+              <span className="w-7 text-right tabular-nums text-[#1D1D1F]">
                 {fontSize}
               </span>
             </label>
           ) : (
-            <label className="flex items-center gap-2 text-[11.5px] text-neutral-500">
+            <label className="flex items-center gap-2 text-[11.5px] text-[#6E6E73]">
               <span>Width</span>
               <input
                 type="range"
@@ -238,9 +237,9 @@ export function ToolOptionsBar({
                 max={12}
                 value={strokeWidth}
                 onChange={(e) => onStrokeWidthChange(Number(e.target.value))}
-                className="w-16 accent-[#0A84FF]"
+                className="w-16 accent-[#007AFF]"
               />
-              <span className="w-4 text-right tabular-nums text-neutral-700">
+              <span className="w-4 text-right tabular-nums text-[#1D1D1F]">
                 {strokeWidth}
               </span>
             </label>
@@ -252,7 +251,7 @@ export function ToolOptionsBar({
                 type="checkbox"
                 checked={filled}
                 onChange={(e) => onFilledChange(e.target.checked)}
-                className="accent-[#0A84FF]"
+                className="accent-[#007AFF]"
               />
               <span>Fill</span>
             </label>
@@ -264,7 +263,7 @@ export function ToolOptionsBar({
                 type="checkbox"
                 checked={highlighter}
                 onChange={(e) => onHighlighterChange(e.target.checked)}
-                className="accent-[#0A84FF]"
+                className="accent-[#007AFF]"
               />
               <span>Highlighter</span>
             </label>

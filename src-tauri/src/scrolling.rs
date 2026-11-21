@@ -260,7 +260,17 @@ pub fn start_scrolling_capture(
         );
         windows::close_scroll_hud(&app);
 
-        let meta = state.store.lock().insert(final_image, scale_factor, "scrolling");
+        let meta = state.store.lock().insert(
+            final_image,
+            scale_factor,
+            "scrolling",
+            Some(capture::MonitorBounds {
+                x: monitor_x,
+                y: monitor_y,
+                width: monitor_w,
+                height: monitor_h,
+            }),
+        );
         let _ = finalize_capture(&app, &state, &meta, false);
     });
 

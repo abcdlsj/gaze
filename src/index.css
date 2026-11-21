@@ -2,14 +2,56 @@
 
 @layer base {
   :root {
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
-      Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-ui: "SF Pro Text", -apple-system, BlinkMacSystemFont, "PingFang SC",
+      "Hiragino Sans GB", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+    --font-display: "SF Pro Display", -apple-system, BlinkMacSystemFont,
+      "PingFang SC", "Segoe UI Variable Display", "Segoe UI", sans-serif;
+    --font-mono: "SF Mono", ui-monospace, Menlo, "Cascadia Mono", Consolas,
+      monospace;
+
+    font-family: var(--font-ui);
     font-size: 13px;
-    line-height: 1.4;
+    line-height: 1.42;
+    letter-spacing: -0.008em;
+    font-feature-settings: "cv01" 1, "ss01" 1;
     color: #1d1d1f;
     background-color: transparent;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Refined macOS editorial typography */
+  :root[data-platform="macos"] {
+    --font-ui: "SF Pro Text", -apple-system, BlinkMacSystemFont, "PingFang SC",
+      "Hiragino Sans GB", sans-serif;
+    --font-display: "SF Pro Display", -apple-system, BlinkMacSystemFont,
+      "PingFang SC", sans-serif;
+    --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
+    letter-spacing: -0.01em;
+  }
+
+  /* Crisp Windows 11 Fluent typography */
+  :root[data-platform="windows"] {
+    --font-ui: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI",
+      sans-serif;
+    --font-display: "Segoe UI Variable Display", "Segoe UI",
+      "Microsoft YaHei UI", sans-serif;
+    --font-mono: "Cascadia Mono", "Consolas", ui-monospace, monospace;
+    letter-spacing: -0.003em;
+  }
+
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+
+  .font-mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
   }
 
   html,
@@ -22,25 +64,47 @@
   }
 }
 
-/* Crisp checkerboard pattern matching Shottr editor background */
+/* Airy, fine checkerboard matching Shottr's crisp editor canvas (Image 2) */
 .checkerboard-bg {
   background-color: #ffffff;
-  background-image: linear-gradient(45deg, #f3f4f6 25%, transparent 25%),
-    linear-gradient(-45deg, #f3f4f6 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #f3f4f6 75%),
-    linear-gradient(-45deg, transparent 75%, #f3f4f6 75%);
-  background-size: 16px 16px;
-  background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+  background-image: linear-gradient(45deg, #f5f5f7 25%, transparent 25%),
+    linear-gradient(-45deg, #f5f5f7 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #f5f5f7 75%),
+    linear-gradient(-45deg, transparent 75%, #f5f5f7 75%);
+  background-size: 14px 14px;
+  background-position: 0 0, 0 7px, 7px -7px, -7px 0px;
 }
 
 .checkerboard-sm {
   background-color: #ffffff;
-  background-image: linear-gradient(45deg, #e5e7eb 25%, transparent 25%),
-    linear-gradient(-45deg, #e5e7eb 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #e5e7eb 75%),
-    linear-gradient(-45deg, transparent 75%, #e5e7eb 75%);
+  background-image: linear-gradient(45deg, #eaecef 25%, transparent 25%),
+    linear-gradient(-45deg, #eaecef 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #eaecef 75%),
+    linear-gradient(-45deg, transparent 75%, #eaecef 75%);
   background-size: 10px 10px;
   background-position: 0 0, 0 5px, 5px -5px, -5px 0px;
+}
+
+/* Native macOS push button sheen */
+.mac-btn {
+  background: linear-gradient(180deg, #ececee 0%, #e4e4e7 100%);
+  box-shadow:
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.75),
+    0 0.5px 1px rgba(0, 0, 0, 0.06);
+}
+.mac-btn:hover {
+  background: linear-gradient(180deg, #e7e7ea 0%, #dcdce0 100%);
+}
+.mac-btn:active {
+  background: linear-gradient(180deg, #dcdce0 0%, #d4d4d8 100%);
+}
+
+/* Native macOS blue fill for radios/checkboxes */
+.mac-blue-fill {
+  background: linear-gradient(180deg, #218cff 0%, #007aff 100%);
+  box-shadow:
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.35),
+    0 0.5px 1.5px rgba(0, 122, 255, 0.35);
 }
 
 /* Native-like macOS range slider */
@@ -56,18 +120,40 @@ input[type="range"].shotter-slider {
 input[type="range"].shotter-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 18px;
-  height: 18px;
+  width: 19px;
+  height: 19px;
   border-radius: 999px;
   background: #ffffff;
-  border: 0.5px solid rgba(0, 0, 0, 0.16);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), 0 0.5px 1px rgba(0, 0, 0, 0.08);
+  border: 0.5px solid rgba(0, 0, 0, 0.12);
+  box-shadow:
+    0 1.5px 4px rgba(0, 0, 0, 0.16),
+    0 0.5px 1px rgba(0, 0, 0, 0.08);
   cursor: pointer;
-  transition: transform 0.1s ease;
+  transition: transform 0.12s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+input[type="range"].shotter-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.04);
 }
 
 input[type="range"].shotter-slider::-webkit-slider-thumb:active {
-  transform: scale(1.06);
+  transform: scale(1.08);
+  background: #f8f8fa;
+}
+
+@keyframes shotterPopIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-pop-in {
+  animation: shotterPopIn 0.14s cubic-bezier(0.2, 0.85, 0.3, 1) forwards;
 }
 
 /* Custom subtle scrollbars */
@@ -81,10 +167,10 @@ input[type="range"].shotter-slider::-webkit-slider-thumb:active {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.18);
+  background: rgba(0, 0, 0, 0.14);
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.26);
 }

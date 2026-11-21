@@ -11,7 +11,7 @@ import {
 import {
   copyImageBytes,
   copyTextToClipboard,
-  getCaptureImageBytes,
+  getCaptureImageRaw,
   getCaptureMeta,
   getSettings,
   openPreferencesWindow,
@@ -49,6 +49,16 @@ interface CropRect {
 export function EditorWindow({ captureId }: { captureId: string }) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Direct DOM refs for zero-rerender 120fps live color inspector
+  const colorDotRef = useRef<HTMLSpanElement | null>(null);
+  const colorHexRef = useRef<HTMLSpanElement | null>(null);
+  const hoverHexRef = useRef<string>("#000000");
+  // Cached composite RGBA pixel buffer for O(1) color lookup without GPU getImageData stalls
+  const compositePixelsRef = useRef<{
+    w: number;
+    h: number;
+    data: Uint8ClampedArray;
+  } | null>(null);
 
   const [sourceCanvas, setSourceCanvas] = useState<HTMLCanvasElement | null>(
     null,
@@ -100,9 +110,9 @@ export function EditorWindow({ captureId }: { captureId: string }) {
   const [cropRect, setCropRect] = useState<CropRect | null>(null);
   const [resizeOpen, setResizeOpen] = useState(false);
 
-  // Inspector & feedback
-  const [hoverHex, setHoverHex] = useState<string>("#000000");
+  // Toast feedback
   const [toast, setToast] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const dragRef = useRef<{
     kind: "pan" | "draw" | "move-ann" | "crop";
@@ -116,55 +126,63 @@ export function EditorWindow({ captureId }: { captureId: string }) {
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
-    setTimeout(() => setToast(null), 1300);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 1300);
   }, []);
 
-  // Load capture image and preferences
+  // Load capture via zero-compression raw RGBA IPC (instant paint, no PNG decode lag)
   useEffect(() => {
     let active = true;
-    let url: string | null = null;
 
     void (async () => {
       try {
-        const [meta, bytes, s] = await Promise.all([
+        const [meta, raw, s] = await Promise.all([
           getCaptureMeta(captureId),
-          getCaptureImageBytes(captureId),
+          getCaptureImageRaw(captureId),
           getSettings(),
         ]);
         if (!active) return;
 
         setSettings(s);
-        setScaleFactor(meta.scale_factor || 1);
+        const sf = meta.scale_factor || 1;
+        setScaleFactor(sf);
         setColor(s.editor.default_color);
         setStrokeWidth(s.editor.stroke_width);
         setFontSize(s.editor.font_size);
         setBlurStrength(s.editor.blur_strength);
 
-        url = URL.createObjectURL(
-          new Blob([bytes as Uint8Array<ArrayBuffer>], { type: "image/png" }),
-        );
-        const img = new Image();
-        img.onload = () => {
-          if (!active) return;
-          const c = document.createElement("canvas");
-          c.width = img.naturalWidth;
-          c.height = img.naturalHeight;
-          c.getContext("2d")?.drawImage(img, 0, 0);
-          setSourceCanvas(c);
-          setImgSize({ w: img.naturalWidth, h: img.naturalHeight });
+        const c = document.createElement("canvas");
+        c.width = raw.width;
+        c.height = raw.height;
+        const ctx = c.getContext("2d");
+        if (ctx) {
+          const imgData = new ImageData(
+            new Uint8ClampedArray(raw.data),
+            raw.width,
+            raw.height,
+          );
+          ctx.putImageData(imgData, 0, 0);
+        }
 
-          // Auto-fit if image is larger than viewport, otherwise crisp 100% (1:1 pt)
-          const vp = viewportRef.current;
-          if (vp) {
-            const logicalW = img.naturalWidth / (meta.scale_factor || 1);
-            const logicalH = img.naturalHeight / (meta.scale_factor || 1);
-            const fitW = (vp.clientWidth - 64) / Math.max(1, logicalW);
-            const fitH = (vp.clientHeight - 64) / Math.max(1, logicalH);
-            const initialZoom = Math.min(1, fitW, fitH);
-            setZoom(Math.max(0.15, Number(initialZoom.toFixed(2))));
-          }
+        // Pre-seed pixel cache immediately so eyedropper works at 120fps on frame 1
+        compositePixelsRef.current = {
+          w: raw.width,
+          h: raw.height,
+          data: raw.data,
         };
-        img.src = url;
+
+        setSourceCanvas(c);
+        setImgSize({ w: raw.width, h: raw.height });
+
+        const vp = viewportRef.current;
+        if (vp) {
+          const logicalW = raw.width / sf;
+          const logicalH = raw.height / sf;
+          const fitW = (vp.clientWidth - 64) / Math.max(1, logicalW);
+          const fitH = (vp.clientHeight - 64) / Math.max(1, logicalH);
+          const initialZoom = Math.min(1, fitW, fitH);
+          setZoom(Math.max(0.15, Number(initialZoom.toFixed(2))));
+        }
       } catch (err) {
         console.error("Failed to load capture:", err);
       }
@@ -172,7 +190,6 @@ export function EditorWindow({ captureId }: { captureId: string }) {
 
     return () => {
       active = false;
-      if (url) URL.revokeObjectURL(url);
     };
   }, [captureId]);
 
@@ -205,6 +222,20 @@ export function EditorWindow({ captureId }: { captureId: string }) {
       displayedAnnotations,
       selectedId,
     );
+
+    // Refresh CPU pixel cache only when idle (not mid-stroke) so dragging stays 120fps
+    if (!draftAnn) {
+      try {
+        const snap = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        compositePixelsRef.current = {
+          w: snap.width,
+          h: snap.height,
+          data: snap.data,
+        };
+      } catch {
+        // ignore
+      }
+    }
   }, [
     sourceCanvas,
     imgSize,
@@ -213,6 +244,7 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     displayedAnnotations,
     selectedId,
     layout,
+    draftAnn,
   ]);
 
   const commitAnnotations = useCallback(
@@ -255,7 +287,6 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     setPan({ x: 0, y: 0 });
   }, [layout, scaleFactor]);
 
-  // Enter crop mode initializes full crop box
   const selectTool = useCallback(
     (tool: EditorTool) => {
       setTextDraft(null);
@@ -289,11 +320,12 @@ export function EditorWindow({ captureId }: { captureId: string }) {
 
     setSourceCanvas(nextCanvas);
     setImgSize({ w: rw, h: rh });
-    // Shift existing annotations to match cropped origin
     setAnnotations((prev) => prev.map((a) => translateAnnotation(a, -rx, -ry)));
     setCropRect(null);
     setActiveTool("select");
-    showToast(`Cropped to ${Math.round(rw / scaleFactor)}×${Math.round(rh / scaleFactor)}pt`);
+    showToast(
+      `Cropped to ${Math.round(rw / scaleFactor)}×${Math.round(rh / scaleFactor)}pt`,
+    );
   }, [cropRect, sourceCanvas, imgSize, scaleFactor, showToast]);
 
   const handleResize = useCallback(
@@ -311,7 +343,6 @@ export function EditorWindow({ captureId }: { captureId: string }) {
       }
       setSourceCanvas(nextCanvas);
       setImgSize({ w: newW, h: newH });
-      // Scale annotations proportionally
       setAnnotations((prev) =>
         prev.map((a) => {
           switch (a.type) {
@@ -352,7 +383,6 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     [sourceCanvas, imgSize, scaleFactor, showToast],
   );
 
-  // Export actions
   const buildExportBytes = useCallback(async () => {
     if (!sourceCanvas) throw new Error("Image not loaded");
     return exportCompositePng(
@@ -421,10 +451,9 @@ export function EditorWindow({ captureId }: { captureId: string }) {
   }, [buildExportBytes, scaleFactor, showToast]);
 
   const handleCopyHex = useCallback(() => {
-    void copyTextToClipboard(hoverHex).then(() =>
-      showToast(`Copied ${hoverHex}`),
-    );
-  }, [hoverHex, showToast]);
+    const hex = hoverHexRef.current;
+    void copyTextToClipboard(hex).then(() => showToast(`Copied ${hex}`));
+  }, [showToast]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -560,14 +589,15 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     selectTool,
   ]);
 
-  // Map client pointer coordinates into image pixel space
   const clientToImagePoint = useCallback(
     (clientX: number, clientY: number): Point | null => {
       const canvas = canvasRef.current;
       if (!canvas) return null;
       const rect = canvas.getBoundingClientRect();
-      const cx = ((clientX - rect.left) / Math.max(1, rect.width)) * layout.canvasWidth;
-      const cy = ((clientY - rect.top) / Math.max(1, rect.height)) * layout.canvasHeight;
+      const cx =
+        ((clientX - rect.left) / Math.max(1, rect.width)) * layout.canvasWidth;
+      const cy =
+        ((clientY - rect.top) / Math.max(1, rect.height)) * layout.canvasHeight;
       return {
         x: cx - layout.offsetX,
         y: cy - layout.offsetY,
@@ -576,41 +606,50 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     [layout],
   );
 
-  // Sample exact hex color under cursor on the composite canvas
-  const sampleColorAtClient = useCallback(
-    (clientX: number, clientY: number) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const rect = canvas.getBoundingClientRect();
-      if (
-        clientX < rect.left ||
-        clientX > rect.right ||
-        clientY < rect.top ||
-        clientY > rect.bottom
-      ) {
-        return;
+  // Zero-alloc, zero-rerender O(1) pixel sampling directly from cached Uint8ClampedArray
+  const sampleColorAtClient = useCallback((clientX: number, clientY: number) => {
+    const canvas = canvasRef.current;
+    const cache = compositePixelsRef.current;
+    if (!canvas || !cache) return;
+    const rect = canvas.getBoundingClientRect();
+    if (
+      clientX < rect.left ||
+      clientX > rect.right ||
+      clientY < rect.top ||
+      clientY > rect.bottom
+    ) {
+      return;
+    }
+    const px = Math.min(
+      cache.w - 1,
+      Math.max(
+        0,
+        Math.floor(
+          ((clientX - rect.left) / Math.max(1, rect.width)) * cache.w,
+        ),
+      ),
+    );
+    const py = Math.min(
+      cache.h - 1,
+      Math.max(
+        0,
+        Math.floor(
+          ((clientY - rect.top) / Math.max(1, rect.height)) * cache.h,
+        ),
+      ),
+    );
+    const idx = (py * cache.w + px) * 4;
+    const hex = rgbToHex(cache.data[idx], cache.data[idx + 1], cache.data[idx + 2]);
+    if (hex !== hoverHexRef.current) {
+      hoverHexRef.current = hex;
+      if (colorDotRef.current) {
+        colorDotRef.current.style.backgroundColor = hex;
       }
-      const px = Math.min(
-        canvas.width - 1,
-        Math.max(
-          0,
-          Math.floor(((clientX - rect.left) / Math.max(1, rect.width)) * canvas.width),
-        ),
-      );
-      const py = Math.min(
-        canvas.height - 1,
-        Math.max(
-          0,
-          Math.floor(((clientY - rect.top) / Math.max(1, rect.height)) * canvas.height),
-        ),
-      );
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (!ctx) return;
-      const data = ctx.getImageData(px, py, 1, 1).data;
-      setHoverHex(rgbToHex(data[0], data[1], data[2]));
-    },
-    [],
-  );
+      if (colorHexRef.current) {
+        colorHexRef.current.textContent = hex;
+      }
+    }
+  }, []);
 
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
     if (e.button === 1 || spacePressed) {
@@ -668,7 +707,6 @@ export function EditorWindow({ captureId }: { captureId: string }) {
       return;
     }
 
-    // Begin drawing a new annotation
     const id = crypto.randomUUID();
     let initial: Annotation | null = null;
     switch (activeTool) {
@@ -780,10 +818,14 @@ export function EditorWindow({ captureId }: { captureId: string }) {
       let y1 = o.y;
       let x2 = o.x + o.w;
       let y2 = o.y + o.h;
-      if (drag.cropEdge.includes("w")) x1 = Math.max(0, Math.min(x2 - 16, o.x + dx));
-      if (drag.cropEdge.includes("e")) x2 = Math.min(imgSize.w, Math.max(x1 + 16, o.x + o.w + dx));
-      if (drag.cropEdge.includes("n")) y1 = Math.max(0, Math.min(y2 - 16, o.y + dy));
-      if (drag.cropEdge.includes("s")) y2 = Math.min(imgSize.h, Math.max(y1 + 16, o.y + o.h + dy));
+      if (drag.cropEdge.includes("w"))
+        x1 = Math.max(0, Math.min(x2 - 16, o.x + dx));
+      if (drag.cropEdge.includes("e"))
+        x2 = Math.min(imgSize.w, Math.max(x1 + 16, o.x + o.w + dx));
+      if (drag.cropEdge.includes("n"))
+        y1 = Math.max(0, Math.min(y2 - 16, o.y + dy));
+      if (drag.cropEdge.includes("s"))
+        y2 = Math.min(imgSize.h, Math.max(y1 + 16, o.y + o.h + dy));
       setCropRect({ x: x1, y: y1, w: x2 - x1, h: y2 - y1 });
       return;
     }
@@ -805,12 +847,12 @@ export function EditorWindow({ captureId }: { captureId: string }) {
           case "arrow":
           case "line":
           case "ruler": {
-            // Snap to horizontal/vertical/45° when holding Shift
             let end = pt;
             if (e.shiftKey) {
               const dx = pt.x - curr.start.x;
               const dy = pt.y - curr.start.y;
-              const angle = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
+              const angle =
+                Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
               const dist = Math.hypot(dx, dy);
               end = {
                 x: curr.start.x + Math.cos(angle) * dist,
@@ -920,7 +962,7 @@ export function EditorWindow({ captureId }: { captureId: string }) {
   const heightPt = Math.round(layout.canvasHeight / scaleFactor);
 
   return (
-    <div className="flex h-full w-full flex-col bg-white text-neutral-900">
+    <div className="flex h-full w-full flex-col bg-white text-[#1D1D1F]">
       <EditorToolbar
         activeTool={activeTool}
         onSelectTool={selectTool}
@@ -935,7 +977,8 @@ export function EditorWindow({ captureId }: { captureId: string }) {
         canUndo={undoStack.length > 0}
         canRedo={redoStack.length > 0}
         hasAnnotations={annotations.length > 0}
-        hoverHex={hoverHex}
+        colorDotRef={colorDotRef}
+        colorHexRef={colorHexRef}
         onCopyHex={handleCopyHex}
         widthPt={widthPt}
         heightPt={heightPt}
@@ -949,7 +992,7 @@ export function EditorWindow({ captureId }: { captureId: string }) {
         backdropEnabled={backdrop.enabled}
       />
 
-      {/* Main Checkerboard Canvas Viewport */}
+      {/* Airy Checkerboard Canvas Viewport */}
       <div
         ref={viewportRef}
         onMouseMove={handleViewportMouseMove}
@@ -990,12 +1033,13 @@ export function EditorWindow({ captureId }: { captureId: string }) {
           }}
         />
 
-        {/* Positioned Canvas Stage */}
+        {/* GPU-accelerated Canvas Stage */}
         <div
           style={{
             width: displayW,
             height: displayH,
-            transform: `translate(${pan.x}px, ${pan.y}px)`,
+            transform: `translate3d(${pan.x}px, ${pan.y}px, 0)`,
+            willChange: "transform",
           }}
           className="relative shrink-0"
         >
@@ -1007,10 +1051,10 @@ export function EditorWindow({ captureId }: { captureId: string }) {
               height: displayH,
               imageRendering: zoom >= 2 ? "pixelated" : "auto",
             }}
-            className="block shadow-[0_1px_4px_rgba(0,0,0,0.08)]"
+            className="block shadow-[0_1px_5px_rgba(0,0,0,0.08)]"
           />
 
-          {/* Inline text box when placing Text annotation */}
+          {/* Inline text box */}
           {textDraft && (
             <textarea
               autoFocus
@@ -1036,7 +1080,7 @@ export function EditorWindow({ captureId }: { captureId: string }) {
                 lineHeight: 1.25,
               }}
               placeholder="Type…"
-              className="absolute z-30 min-w-[120px] resize-none rounded border border-[#0A84FF] bg-white/85 px-1.5 py-0.5 font-semibold outline-none shadow"
+              className="absolute z-30 min-w-[120px] resize-none rounded-md border border-[#007AFF] bg-white/90 px-2 py-0.5 font-semibold shadow-md outline-none"
             />
           )}
 
@@ -1049,9 +1093,9 @@ export function EditorWindow({ captureId }: { captureId: string }) {
                 top: ((cropRect.y + layout.offsetY) / scaleFactor) * zoom,
                 width: (cropRect.w / scaleFactor) * zoom,
                 height: (cropRect.h / scaleFactor) * zoom,
-                boxShadow: "0 0 0 9999px rgba(0, 0, 0, 0.35)",
+                boxShadow: "0 0 0 9999px rgba(0, 0, 0, 0.34)",
               }}
-              className="absolute z-20 cursor-move border-2 border-[#0A84FF]"
+              className="absolute z-20 cursor-move border-2 border-[#007AFF]"
             >
               {(
                 [
@@ -1064,16 +1108,16 @@ export function EditorWindow({ captureId }: { captureId: string }) {
                 <div
                   key={edge}
                   onMouseDown={(e) => startCropDrag(edge, e)}
-                  className={`absolute h-3 w-3 rounded-full border-2 border-[#0A84FF] bg-white shadow ${cls}`}
+                  className={`absolute h-3 w-3 rounded-full border-2 border-[#007AFF] bg-white shadow ${cls}`}
                 />
               ))}
             </div>
           )}
         </div>
 
-        {/* Crisp minimal toast */}
+        {/* Minimal Frosted Toast */}
         {toast && (
-          <div className="pointer-events-none absolute bottom-5 left-1/2 z-40 -translate-x-1/2 rounded-full bg-neutral-900/88 px-3.5 py-1.5 text-[12px] font-medium text-white shadow-lg">
+          <div className="animate-pop-in pointer-events-none absolute bottom-5 left-1/2 z-40 -translate-x-1/2 rounded-full bg-[#1C1C1E]/88 px-4 py-1.5 text-[12px] font-medium text-white shadow-xl backdrop-blur-md">
             {toast}
           </div>
         )}

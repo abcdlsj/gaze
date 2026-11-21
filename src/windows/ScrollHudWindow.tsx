@@ -42,23 +42,23 @@ export function ScrollHudWindow() {
   return (
     <div
       data-tauri-drag-region
-      className="flex h-full w-full items-center justify-between gap-3 rounded-xl border border-neutral-200/80 bg-white/95 px-4 shadow-lg backdrop-blur-md"
+      className="flex h-full w-full items-center justify-between gap-3 rounded-2xl border border-black/[0.08] bg-white/94 px-4 shadow-[0_12px_32px_rgba(0,0,0,0.16)] backdrop-blur-xl"
     >
-      <div className="flex items-center gap-2.5 pointer-events-none">
+      <div className="pointer-events-none flex items-center gap-2.5">
         <span className="relative flex h-2.5 w-2.5">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75" />
-          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-blue-500" />
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#007AFF] opacity-60" />
+          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#007AFF]" />
         </span>
         <div className="flex flex-col">
-          <div className="flex items-center gap-2 text-[12px] font-medium text-neutral-800">
+          <div className="flex items-center gap-2 text-[12px] font-medium text-[#1D1D1F]">
             <span>Scrolling capture…</span>
-            <span className="tabular-nums text-neutral-500">
+            <span className="tabular-nums text-[#86868B]">
               {progress.height.toLocaleString()} px
             </span>
           </div>
-          <div className="mt-1 h-1 w-40 overflow-hidden rounded-full bg-neutral-200">
+          <div className="mt-1 h-[3.5px] w-40 overflow-hidden rounded-full bg-black/[0.08]">
             <div
-              className="h-full rounded-full bg-blue-500 transition-all duration-150"
+              className="h-full rounded-full bg-[#007AFF] transition-all duration-150"
               style={{ width: `${Math.max(6, pct)}%` }}
             />
           </div>
@@ -68,9 +68,9 @@ export function ScrollHudWindow() {
       <button
         type="button"
         onClick={() => void stopScrollingCapture()}
-        className="flex items-center gap-1.5 rounded-lg bg-red-500 px-3 py-1.5 text-[12px] font-medium text-white shadow-xs transition hover:bg-red-600 active:scale-[0.98]"
+        className="flex cursor-pointer items-center gap-1.5 rounded-lg bg-[#FF3B30] px-3 py-1.5 text-[12px] font-medium text-white shadow-xs transition hover:brightness-105 active:scale-[0.97]"
       >
-        <Square className="h-3 w-3 fill-current" />
+        <Square className="h-2.5 w-2.5 fill-current" />
         <span>Stop</span>
       </button>
     </div>

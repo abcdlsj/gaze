@@ -32,12 +32,21 @@ pub struct CaptureMeta {
     pub source: String,
 }
 
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct MonitorBounds {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
 #[derive(Debug, Clone)]
 pub struct StoredCapture {
     pub id: String,
     pub image: RgbaImage,
     pub scale_factor: f32,
     pub source: String,
+    pub monitor_bounds: Option<MonitorBounds>,
 }
 
 impl StoredCapture {
@@ -55,6 +64,9 @@ impl StoredCapture {
 #[derive(Debug, Clone)]
 pub struct OverlaySession {
     pub monitor_id: u32,
+    pub monitor_name: String,
+    pub monitor_index: usize,
+    pub monitor_count: usize,
     pub monitor_x: i32,
     pub monitor_y: i32,
     pub monitor_width: u32,
@@ -68,6 +80,9 @@ pub struct OverlaySession {
 #[derive(Debug, Clone, Serialize)]
 pub struct OverlaySessionInfo {
     pub monitor_id: u32,
+    pub monitor_name: String,
+    pub monitor_index: usize,
+    pub monitor_count: usize,
     pub monitor_x: i32,
     pub monitor_y: i32,
     pub monitor_width: u32,
@@ -83,6 +98,9 @@ impl OverlaySession {
     pub fn info(&self) -> OverlaySessionInfo {
         OverlaySessionInfo {
             monitor_id: self.monitor_id,
+            monitor_name: self.monitor_name.clone(),
+            monitor_index: self.monitor_index,
+            monitor_count: self.monitor_count,
             monitor_x: self.monitor_x,
             monitor_y: self.monitor_y,
             monitor_width: self.monitor_width,
@@ -92,6 +110,15 @@ impl OverlaySession {
             scale_factor: self.scale_factor,
             windows: self.windows.clone(),
             initial_mode: self.initial_mode.clone(),
+        }
+    }
+
+    pub fn bounds(&self) -> MonitorBounds {
+        MonitorBounds {
+            x: self.monitor_x,
+            y: self.monitor_y,
+            width: self.monitor_width,
+            height: self.monitor_height,
         }
     }
 }
@@ -106,13 +133,20 @@ pub struct CaptureStore {
 impl CaptureStore {
     const MAX_CAPTURES: usize = 24;
 
-    pub fn insert(&mut self, image: RgbaImage, scale_factor: f32, source: &str) -> CaptureMeta {
+    pub fn insert(
+        &mut self,
+        image: RgbaImage,
+        scale_factor: f32,
+        source: &str,
+        monitor_bounds: Option<MonitorBounds>,
+    ) -> CaptureMeta {
         let id = Uuid::new_v4().to_string();
         let stored = StoredCapture {
             id: id.clone(),
             image,
             scale_factor: if scale_factor > 0.0 { scale_factor } else { 1.0 },
             source: source.to_string(),
+            monitor_bounds,
         };
         let meta = stored.meta();
         self.captures.insert(id.clone(), stored);
@@ -135,26 +169,69 @@ impl CaptureStore {
     }
 }
 
+/// Returns the current global cursor position in the exact coordinate space used by `xcap::Monitor`
+/// (Quartz global logical points on macOS; Win32 virtual screen physical pixels on Windows).
+#[cfg(target_os = "macos")]
+pub fn get_cursor_position() -> Option<(i32, i32)> {
+    use core_graphics::event::CGEvent;
+    use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+    let source = CGEventSource::new(CGEventSourceStateID::CombinedSessionState).ok()?;
+    let event = CGEvent::new(source).ok()?;
+    let pt = event.location();
+    Some((pt.x.round() as i32, pt.y.round() as i32))
+}
+
+#[cfg(not(target_os = "macos"))]
 pub fn get_cursor_position() -> Option<(i32, i32)> {
     use enigo::{Enigo, Mouse, Settings};
     let enigo = Enigo::new(&Settings::default()).ok()?;
     enigo.location().ok()
 }
 
-pub fn find_active_monitor() -> Result<Monitor, String> {
+pub fn find_active_monitor() -> Result<(Monitor, usize, usize), String> {
+    let monitors = Monitor::all().map_err(|e| format!("Failed to enumerate monitors: {e}"))?;
+    let total = monitors.len();
+    if total == 0 {
+        return Err("No monitors detected".to_string());
+    }
+
     if let Some((cx, cy)) = get_cursor_position() {
+        // Explicit bounds hit-test works cleanly with negative coordinates & stacked/mixed-DPI displays.
+        for (idx, m) in monitors.iter().enumerate() {
+            if let (Ok(mx), Ok(my), Ok(mw), Ok(mh)) = (m.x(), m.y(), m.width(), m.height()) {
+                if cx >= mx && cx < mx + (mw as i32) && cy >= my && cy < my + (mh as i32) {
+                    return Ok((m.clone(), idx, total));
+                }
+            }
+        }
         if let Ok(m) = Monitor::from_point(cx, cy) {
-            return Ok(m);
+            let id = m.id().ok();
+            let idx = monitors
+                .iter()
+                .position(|cand| cand.id().ok() == id)
+                .unwrap_or(0);
+            return Ok((m, idx, total));
         }
     }
-    let monitors = Monitor::all().map_err(|e| format!("Failed to enumerate monitors: {e}"))?;
-    if let Some(primary) = monitors.iter().find(|m| m.is_primary().unwrap_or(false)) {
-        return Ok(primary.clone());
+
+    if let Some((idx, primary)) = monitors
+        .iter()
+        .enumerate()
+        .find(|(_, m)| m.is_primary().unwrap_or(false))
+    {
+        return Ok((primary.clone(), idx, total));
     }
-    monitors
-        .into_iter()
-        .next()
-        .ok_or_else(|| "No monitors detected".to_string())
+    Ok((monitors[0].clone(), 0, total))
+}
+
+pub fn find_monitor_by_index(target_index: usize) -> Result<(Monitor, usize, usize), String> {
+    let monitors = Monitor::all().map_err(|e| format!("Failed to enumerate monitors: {e}"))?;
+    let total = monitors.len();
+    if total == 0 {
+        return Err("No monitors detected".to_string());
+    }
+    let idx = target_index % total;
+    Ok((monitors[idx].clone(), idx, total))
 }
 
 pub fn find_monitor_by_id(monitor_id: u32) -> Result<Monitor, String> {
@@ -165,9 +242,19 @@ pub fn find_monitor_by_id(monitor_id: u32) -> Result<Monitor, String> {
         .ok_or_else(|| format!("Monitor {monitor_id} not found"))
 }
 
-pub fn capture_overlay_session(initial_mode: &str) -> Result<OverlaySession, String> {
-    let monitor = find_active_monitor()?;
+pub fn capture_overlay_session(
+    initial_mode: &str,
+    monitor_index_override: Option<usize>,
+) -> Result<OverlaySession, String> {
+    let (monitor, monitor_index, monitor_count) = match monitor_index_override {
+        Some(idx) => find_monitor_by_index(idx)?,
+        None => find_active_monitor()?,
+    };
     let monitor_id = monitor.id().map_err(|e| e.to_string())?;
+    let monitor_name = monitor
+        .friendly_name()
+        .or_else(|_| monitor.name())
+        .unwrap_or_else(|_| format!("Display {}", monitor_index + 1));
     let monitor_x = monitor.x().map_err(|e| e.to_string())?;
     let monitor_y = monitor.y().map_err(|e| e.to_string())?;
     let monitor_width = monitor.width().map_err(|e| e.to_string())?;
@@ -178,6 +265,36 @@ pub fn capture_overlay_session(initial_mode: &str) -> Result<OverlaySession, Str
         .capture_image()
         .map_err(|e| format!("Screen capture failed (check Screen Recording permission): {e}"))?;
 
+    // Only enumerate OS windows immediately when starting in Window mode; otherwise load lazily
+    // so Area / Scrolling capture (F1) has zero extra latency.
+    let windows = if initial_mode == "window" {
+        enumerate_monitor_windows(monitor_x, monitor_y, monitor_width, monitor_height)
+    } else {
+        Vec::new()
+    };
+
+    Ok(OverlaySession {
+        monitor_id,
+        monitor_name,
+        monitor_index,
+        monitor_count,
+        monitor_x,
+        monitor_y,
+        monitor_width,
+        monitor_height,
+        scale_factor,
+        image,
+        windows,
+        initial_mode: initial_mode.to_string(),
+    })
+}
+
+pub fn enumerate_monitor_windows(
+    monitor_x: i32,
+    monitor_y: i32,
+    monitor_width: u32,
+    monitor_height: u32,
+) -> Vec<WindowRect> {
     let mut windows = Vec::new();
     if let Ok(all_windows) = Window::all() {
         for win in all_windows {
@@ -199,7 +316,6 @@ pub fn capture_overlay_session(initial_mode: &str) -> Result<OverlaySession, Str
             }
             let wx = win.x().unwrap_or(0) - monitor_x;
             let wy = win.y().unwrap_or(0) - monitor_y;
-            // Keep windows that intersect this monitor.
             if wx + (w as i32) <= 0
                 || wy + (h as i32) <= 0
                 || wx >= monitor_width as i32
@@ -222,27 +338,33 @@ pub fn capture_overlay_session(initial_mode: &str) -> Result<OverlaySession, Str
             });
         }
     }
-
-    Ok(OverlaySession {
-        monitor_id,
-        monitor_x,
-        monitor_y,
-        monitor_width,
-        monitor_height,
-        scale_factor,
-        image,
-        windows,
-        initial_mode: initial_mode.to_string(),
-    })
+    windows
 }
 
-pub fn capture_fullscreen() -> Result<(RgbaImage, f32), String> {
-    let monitor = find_active_monitor()?;
+/// Packs an RGBA image into a zero-compression binary buffer:
+/// `[width: u32 LE][height: u32 LE][raw RGBA bytes...]` for instant IPC canvas rendering.
+pub fn pack_raw_rgba(img: &RgbaImage) -> Vec<u8> {
+    let raw = img.as_raw();
+    let mut out = Vec::with_capacity(8 + raw.len());
+    out.extend_from_slice(&img.width().to_le_bytes());
+    out.extend_from_slice(&img.height().to_le_bytes());
+    out.extend_from_slice(raw);
+    out
+}
+
+pub fn capture_fullscreen() -> Result<(RgbaImage, f32, MonitorBounds), String> {
+    let (monitor, _, _) = find_active_monitor()?;
     let scale = monitor.scale_factor().unwrap_or(1.0).max(1.0);
+    let bounds = MonitorBounds {
+        x: monitor.x().unwrap_or(0),
+        y: monitor.y().unwrap_or(0),
+        width: monitor.width().unwrap_or(1440),
+        height: monitor.height().unwrap_or(900),
+    };
     let image = monitor
         .capture_image()
         .map_err(|e| format!("Fullscreen capture failed: {e}"))?;
-    Ok((image, scale))
+    Ok((image, scale, bounds))
 }
 
 /// Crops a region given in monitor-relative coordinates from a frozen OverlaySession.
