@@ -2,13 +2,16 @@ pub mod capture;
 pub mod clipboard;
 pub mod hotkeys;
 pub mod permissions;
+pub mod scrolling;
 pub mod settings;
+pub mod stitcher;
 pub mod tray;
 pub mod windows;
 
 use capture::{CaptureMeta, CaptureStore, OverlaySessionInfo};
 use parking_lot::Mutex;
 use permissions::PermissionStatus;
+use scrolling::ScrollingController;
 use settings::{AfterAreaCrop, AppSettings};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -21,6 +24,7 @@ pub struct AppState {
     pub settings: Mutex<AppSettings>,
     pub store: Mutex<CaptureStore>,
     pub hotkey_errors: Mutex<HashMap<String, Option<String>>>,
+    pub scrolling: ScrollingController,
 }
 
 impl AppState {
@@ -29,6 +33,7 @@ impl AppState {
             settings: Mutex::new(AppSettings::load()),
             store: Mutex::new(CaptureStore::default()),
             hotkey_errors: Mutex::new(HashMap::new()),
+            scrolling: ScrollingController::default(),
         }
     }
 }
@@ -438,6 +443,23 @@ fn open_screenshots_folder(state: State<'_, Arc<AppState>>) -> Result<(), String
     Ok(())
 }
 
+#[tauri::command]
+fn start_scrolling_capture(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    scrolling::start_scrolling_capture(app, state.inner().clone(), x, y, width, height)
+}
+
+#[tauri::command]
+fn stop_scrolling_capture(state: State<'_, Arc<AppState>>) {
+    state.scrolling.request_stop();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app_state = Arc::new(AppState::new());
@@ -494,6 +516,8 @@ pub fn run() {
             open_editor_for_capture,
             open_preferences_window,
             open_screenshots_folder,
+            start_scrolling_capture,
+            stop_scrolling_capture,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Shotter");
