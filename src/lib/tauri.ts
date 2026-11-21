@@ -103,8 +103,24 @@ export async function getCaptureImageBytes(id: string): Promise<Uint8Array> {
   return new Uint8Array(buf);
 }
 
+async function uint8ToBase64(bytes: Uint8Array): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const comma = result.indexOf(",");
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Base64 encode failed"));
+    reader.readAsDataURL(
+      new Blob([bytes as Uint8Array<ArrayBuffer>], { type: "image/png" }),
+    );
+  });
+}
+
 export async function copyImageBytes(pngBytes: Uint8Array): Promise<void> {
-  return invoke("copy_image_bytes", { pngBytes: Array.from(pngBytes) });
+  const pngBase64 = await uint8ToBase64(pngBytes);
+  return invoke("copy_image_bytes", { pngBase64 });
 }
 
 export async function copyCaptureById(id: string): Promise<void> {
@@ -120,8 +136,9 @@ export async function saveImageBytes(
   scaleFactor: number,
   path?: string,
 ): Promise<string> {
+  const pngBase64 = await uint8ToBase64(pngBytes);
   return invoke<string>("save_image_bytes", {
-    pngBytes: Array.from(pngBytes),
+    pngBase64,
     scaleFactor,
     path: path ?? null,
   });
@@ -138,8 +155,9 @@ export async function pinImageBytes(
   pngBytes: Uint8Array,
   scaleFactor: number,
 ): Promise<CaptureMeta> {
+  const pngBase64 = await uint8ToBase64(pngBytes);
   return invoke<CaptureMeta>("pin_image_bytes", {
-    pngBytes: Array.from(pngBytes),
+    pngBase64,
     scaleFactor,
   });
 }

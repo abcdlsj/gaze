@@ -8,6 +8,7 @@ pub mod stitcher;
 pub mod tray;
 pub mod windows;
 
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use capture::{CaptureMeta, CaptureStore, OverlaySessionInfo};
 use parking_lot::Mutex;
 use permissions::PermissionStatus;
@@ -333,7 +334,10 @@ fn get_capture_image_png(
 }
 
 #[tauri::command]
-fn copy_image_bytes(png_bytes: Vec<u8>) -> Result<(), String> {
+fn copy_image_bytes(png_base64: String) -> Result<(), String> {
+    let png_bytes = BASE64
+        .decode(png_base64.as_bytes())
+        .map_err(|e| format!("Invalid base64 image payload: {e}"))?;
     clipboard::copy_png_bytes(&png_bytes)
 }
 
@@ -356,10 +360,13 @@ fn copy_text_to_clipboard(text: String) -> Result<(), String> {
 #[tauri::command]
 fn save_image_bytes(
     state: State<'_, Arc<AppState>>,
-    png_bytes: Vec<u8>,
+    png_base64: String,
     scale_factor: f32,
     path: Option<String>,
 ) -> Result<String, String> {
+    let png_bytes = BASE64
+        .decode(png_base64.as_bytes())
+        .map_err(|e| format!("Invalid base64 image payload: {e}"))?;
     let img = image::load_from_memory(&png_bytes)
         .map_err(|e| format!("Failed to decode image bytes: {e}"))?
         .to_rgba8();
@@ -391,9 +398,12 @@ fn save_capture_by_id(
 fn pin_image_bytes(
     app: AppHandle,
     state: State<'_, Arc<AppState>>,
-    png_bytes: Vec<u8>,
+    png_base64: String,
     scale_factor: f32,
 ) -> Result<CaptureMeta, String> {
+    let png_bytes = BASE64
+        .decode(png_base64.as_bytes())
+        .map_err(|e| format!("Invalid base64 image payload: {e}"))?;
     let img = image::load_from_memory(&png_bytes)
         .map_err(|e| format!("Failed to decode pinned image: {e}"))?
         .to_rgba8();
