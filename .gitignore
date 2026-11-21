@@ -1,5 +1,14 @@
+# Dependencies & Build outputs
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+
+# macOS / IDE
+.DS_Store
 .build/
 .swiftpm/
 xcuserdata/
 DerivedData/
 *.xcodeproj/xcuserdata/
+*.log
