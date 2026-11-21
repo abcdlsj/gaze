@@ -4,19 +4,23 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
+KEYCHAIN="${HOME}/Library/Keychains/login.keychain-db"
+
 # Pick a stable macOS Code Signing identity so TCC permissions (Screen Recording & Accessibility)
-# persist across rebuilds. Override via APPLE_SIGNING_IDENTITY="Your Cert Name".
+# persist across rebuilds. Prefers APPLE_SIGNING_IDENTITY, then "abcdlsj Local Dev".
 SIGN_ID="${APPLE_SIGNING_IDENTITY:-}"
 if [[ -z "$SIGN_ID" ]]; then
-  SIGN_ID="$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(.*\)".*/\1/p' | head -n 1 || true)"
+  if security find-identity -v -p codesigning "$KEYCHAIN" 2>/dev/null | grep -Fq '"abcdlsj Local Dev"'; then
+    SIGN_ID="abcdlsj Local Dev"
+  fi
 fi
 
 if [[ -n "$SIGN_ID" ]]; then
   echo "Using signing identity: $SIGN_ID"
   APPLE_SIGNING_IDENTITY="$SIGN_ID" pnpm tauri build --bundles app
 else
-  echo "No local code-signing certificate found; using ad-hoc signing (-)."
-  echo "Tip: create a self-signed Code Signing cert in Keychain Access to keep macOS permissions across rebuilds."
+  echo "No trusted 'abcdlsj Local Dev' certificate found; using ad-hoc signing (-)."
+  echo "Tip: run install.sh from abcdlsj/macos-codesign to trust 'abcdlsj Local Dev'."
   pnpm tauri build --bundles app
 fi
 
