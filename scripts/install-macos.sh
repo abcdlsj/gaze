@@ -15,22 +15,19 @@ if [[ -z "$SIGN_ID" ]]; then
   fi
 fi
 
-if [[ -n "$SIGN_ID" ]]; then
-  echo "Using signing identity: $SIGN_ID"
-  APPLE_SIGNING_IDENTITY="$SIGN_ID" pnpm tauri build --bundles app
-else
-  echo "No trusted 'abcdlsj Local Dev' certificate found; using ad-hoc signing (-)."
-  echo "Tip: run install.sh from abcdlsj/macos-codesign to trust 'abcdlsj Local Dev'."
-  pnpm tauri build --bundles app
-fi
+# Bundle without relying on default keychain search list; sign explicitly below with --keychain.
+APPLE_SIGNING_IDENTITY="-" pnpm tauri build --bundles app
 
 pkill -x gaze 2>/dev/null || true
 rm -rf /Applications/Gaze.app
 cp -R src-tauri/target/release/bundle/macos/Gaze.app /Applications/Gaze.app
 
 if [[ -n "$SIGN_ID" ]]; then
-  codesign --force --deep --sign "$SIGN_ID" /Applications/Gaze.app
+  echo "Signing /Applications/Gaze.app with identity: $SIGN_ID"
+  codesign --force --deep --keychain "$KEYCHAIN" --sign "$SIGN_ID" /Applications/Gaze.app
 else
+  echo "No trusted 'abcdlsj Local Dev' certificate found; using ad-hoc signing (-)."
+  echo "Tip: run install.sh from abcdlsj/macos-codesign to trust 'abcdlsj Local Dev'."
   codesign --force --deep --sign - /Applications/Gaze.app
 fi
 
