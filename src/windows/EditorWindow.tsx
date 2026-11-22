@@ -100,11 +100,26 @@ export function EditorWindow({ captureId }: { captureId: string }) {
   const [draftAnn, setDraftAnn] = useState<Annotation | null>(null);
 
   // Inline text editor
+  const textInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [textDraft, setTextDraft] = useState<{
+    id: number;
     x: number;
     y: number;
     value: string;
   } | null>(null);
+
+  useEffect(() => {
+    if (!textDraft) return;
+    const raf = requestAnimationFrame(() => {
+      const el = textInputRef.current;
+      if (el) {
+        el.focus();
+        const len = el.value.length;
+        el.setSelectionRange(len, len);
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [textDraft?.id]);
 
   // Crop overlay state (in image pixel coordinates)
   const [cropRect, setCropRect] = useState<CropRect | null>(null);
@@ -672,7 +687,23 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     }
 
     if (activeTool === "text") {
-      setTextDraft({ x: pt.x, y: pt.y, value: "" });
+      // Prevent default so the canvas mousedown doesn't immediately blur the newly focused textarea.
+      e.preventDefault();
+      e.stopPropagation();
+      if (textDraft && textDraft.value.trim()) {
+        const ann: Annotation = {
+          id: crypto.randomUUID(),
+          type: "text",
+          x: textDraft.x,
+          y: textDraft.y,
+          text: textDraft.value,
+          fontSize,
+          color,
+          strokeWidth,
+        };
+        commitAnnotations([...annotations, ann]);
+      }
+      setTextDraft({ id: Date.now(), x: pt.x, y: pt.y, value: "" });
       return;
     }
 
@@ -1054,18 +1085,22 @@ export function EditorWindow({ captureId }: { captureId: string }) {
             className="block shadow-[0_1px_5px_rgba(0,0,0,0.08)]"
           />
 
-          {/* Inline text box */}
+          {/* Inline transparent text box (WYSIWYG aligned with canvas text renderer) */}
           {textDraft && (
             <textarea
+              ref={textInputRef}
               autoFocus
-              rows={1}
+              rows={Math.max(1, textDraft.value.split("\n").length)}
               value={textDraft.value}
+              onMouseDown={(e) => e.stopPropagation()}
               onChange={(e) =>
                 setTextDraft({ ...textDraft, value: e.target.value })
               }
               onBlur={commitTextDraft}
               onKeyDown={(e) => {
+                if (e.nativeEvent.isComposing || e.keyCode === 229) return;
                 if (e.key === "Escape") {
+                  e.preventDefault();
                   setTextDraft(null);
                 } else if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
@@ -1073,14 +1108,32 @@ export function EditorWindow({ captureId }: { captureId: string }) {
                 }
               }}
               style={{
-                left: ((textDraft.x + layout.offsetX) / scaleFactor) * zoom,
-                top: ((textDraft.y + layout.offsetY) / scaleFactor) * zoom,
+                left: ((textDraft.x + layout.offsetX) / scaleFactor) * zoom - 2,
+                top: ((textDraft.y + layout.offsetY) / scaleFactor) * zoom - 1,
                 color,
+                caretColor: color,
                 fontSize: `${fontSize * zoom}px`,
-                lineHeight: 1.25,
+                lineHeight: 1.28,
+                textShadow: "0 0 2px rgba(0, 0, 0, 0.22)",
+                width: `${Math.max(
+                  6,
+                  ...textDraft.value.split("\n").map((line) => {
+                    // CJK chars are ~2ch wide; ASCII chars ~1ch wide.
+                    let units = 0;
+                    for (const ch of line) {
+                      units += ch.charCodeAt(0) > 127 ? 2 : 1.05;
+                    }
+                    return Math.ceil(units) + 2;
+                  }),
+                )}ch`,
+                maxWidth: Math.max(
+                  120,
+                  displayW - ((textDraft.x + layout.offsetX) / scaleFactor) * zoom,
+                ),
+                userSelect: "text",
               }}
               placeholder="Type…"
-              className="absolute z-30 min-w-[120px] resize-none rounded-md border border-[#007AFF] bg-white/90 px-2 py-0.5 font-semibold shadow-md outline-none"
+              className="absolute z-30 resize-none overflow-hidden rounded-[3px] border border-dashed border-[#007AFF]/70 bg-transparent px-0.5 py-0 font-semibold outline-none placeholder:text-current/45"
             />
           )}
 

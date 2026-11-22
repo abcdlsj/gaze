@@ -155,8 +155,11 @@ pub fn default_screenshots_folder() -> PathBuf {
     if let Some(pictures) = dirs::picture_dir() {
         return pictures.join("Gaze");
     }
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
+    if let Some(home) = dirs::home_dir() {
+        return home.join("Gaze");
+    }
+    std::env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("/"))
         .join("Gaze")
 }
 
@@ -186,6 +189,13 @@ impl AppSettings {
         self.scrolling_speed = self.scrolling_speed.clamp(1, 100);
         if self.screenshots_folder.trim().is_empty() {
             self.screenshots_folder = default_screenshots_folder().to_string_lossy().to_string();
+        } else {
+            let p = PathBuf::from(self.screenshots_folder.trim());
+            if !p.is_absolute() {
+                if let Ok(cwd) = std::env::current_dir() {
+                    self.screenshots_folder = cwd.join(p).to_string_lossy().to_string();
+                }
+            }
         }
         self.editor.stroke_width = self.editor.stroke_width.clamp(1, 24);
         self.editor.font_size = self.editor.font_size.clamp(10, 72);

@@ -1,41 +1,56 @@
 use crate::hotkeys::{
     ACTION_AREA, ACTION_CLIPBOARD, ACTION_FULLSCREEN, ACTION_SCROLLING, ACTION_WINDOW,
 };
+use crate::settings::HotkeyConfig;
 use crate::windows;
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::AppHandle;
 
+const TRAY_ID: &str = "gaze-tray";
 const TRAY_ICON_BYTES: &[u8] = include_bytes!("../icons/tray-icon.png");
 
-pub fn setup_tray<F>(app: &AppHandle, on_action: F) -> Result<(), String>
-where
-    F: Fn(AppHandle, &'static str) + Send + Sync + Clone + 'static,
-{
-    let area = MenuItem::with_id(app, "tray_area", "Capture Area", true, None::<&str>)
-        .map_err(|e| e.to_string())?;
-    let fullscreen =
-        MenuItem::with_id(app, "tray_fullscreen", "Capture Fullscreen", true, None::<&str>)
-            .map_err(|e| e.to_string())?;
-    let window = MenuItem::with_id(app, "tray_window", "Capture Window", true, None::<&str>)
-        .map_err(|e| e.to_string())?;
-    let scrolling = MenuItem::with_id(
+fn make_shortcut_item(
+    app: &AppHandle,
+    id: &str,
+    label: &str,
+    shortcut: &str,
+) -> Result<MenuItem<tauri::Wry>, String> {
+    let accel = shortcut.trim();
+    if !accel.is_empty() {
+        if let Ok(item) = MenuItem::with_id(app, id, label, true, Some(accel)) {
+            return Ok(item);
+        }
+    }
+    MenuItem::with_id(app, id, label, true, None::<&str>).map_err(|e| e.to_string())
+}
+
+fn build_tray_menu(
+    app: &AppHandle,
+    hotkeys: &HotkeyConfig,
+) -> Result<Menu<tauri::Wry>, String> {
+    let area = make_shortcut_item(app, "tray_area", "Capture Area", &hotkeys.capture_area)?;
+    let fullscreen = make_shortcut_item(
+        app,
+        "tray_fullscreen",
+        "Capture Fullscreen",
+        &hotkeys.capture_fullscreen,
+    )?;
+    let window =
+        make_shortcut_item(app, "tray_window", "Capture Window", &hotkeys.capture_window)?;
+    let scrolling = make_shortcut_item(
         app,
         "tray_scrolling",
         "Scrolling Screenshot",
-        true,
-        None::<&str>,
-    )
-    .map_err(|e| e.to_string())?;
-    let clipboard = MenuItem::with_id(
+        &hotkeys.capture_scrolling,
+    )?;
+    let clipboard = make_shortcut_item(
         app,
         "tray_clipboard",
         "Open from Clipboard",
-        true,
-        None::<&str>,
-    )
-    .map_err(|e| e.to_string())?;
+        &hotkeys.open_clipboard,
+    )?;
     let sep1 = PredefinedMenuItem::separator(app).map_err(|e| e.to_string())?;
     let prefs = MenuItem::with_id(app, "tray_prefs", "Preferences...", true, None::<&str>)
         .map_err(|e| e.to_string())?;
@@ -43,7 +58,7 @@ where
     let quit = MenuItem::with_id(app, "tray_quit", "Quit Gaze", true, None::<&str>)
         .map_err(|e| e.to_string())?;
 
-    let menu = Menu::with_items(
+    Menu::with_items(
         app,
         &[
             &area,
@@ -57,13 +72,32 @@ where
             &quit,
         ],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| e.to_string())
+}
+
+pub fn update_tray_menu(app: &AppHandle, hotkeys: &HotkeyConfig) {
+    if let Some(tray) = app.tray_by_id(TRAY_ID) {
+        if let Ok(menu) = build_tray_menu(app, hotkeys) {
+            let _ = tray.set_menu(Some(menu));
+        }
+    }
+}
+
+pub fn setup_tray<F>(
+    app: &AppHandle,
+    hotkeys: &HotkeyConfig,
+    on_action: F,
+) -> Result<(), String>
+where
+    F: Fn(AppHandle, &'static str) + Send + Sync + Clone + 'static,
+{
+    let menu = build_tray_menu(app, hotkeys)?;
 
     let icon = Image::from_bytes(TRAY_ICON_BYTES)
         .map_err(|e| format!("Failed to load tray icon: {e}"))?;
 
     let cb = on_action.clone();
-    let builder = TrayIconBuilder::with_id("gaze-tray")
+    let builder = TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
         .tooltip("Gaze")
         .menu(&menu)

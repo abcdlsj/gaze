@@ -229,25 +229,19 @@ export function GeneralTab({ settings, onChange }: Props) {
     }
   };
 
-  const folderShortName = (() => {
-    const p = settings.screenshots_folder;
-    if (!p) return "Select Folder";
-    const parts = p.split(/[\\/]/).filter(Boolean);
-    if (parts.length <= 2) return p;
-    return `…/${parts.slice(-2).join("/")}`;
-  })();
+  const folderDisplay = settings.screenshots_folder || "Select Folder";
 
   const thumbnailDisabled = settings.after_area_crop !== "thumbnail";
   const speedPct = Math.max(0, Math.min(100, settings.scrolling_speed));
 
   return (
     <div className="flex flex-col px-5 py-3.5">
-      {/* Window Screenshot Background */}
+      {/* Window Background */}
       <div className="flex items-center gap-1.5">
         <span className="text-[12.5px] font-medium tracking-[-0.01em] text-[#1D1D1F]">
-          Window Screenshot Background
+          Window Background
         </span>
-        <TooltipBadge text="Choose how background & drop shadow are rendered when capturing an individual window." />
+        <TooltipBadge text="Background style for window captures." />
         {settings.window_background === "solid_color" && (
           <label className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-[#F5F5F7] px-2 py-0.5 text-[11px] font-medium text-[#515154] ring-1 ring-black/[0.06]">
             <span>Color</span>
@@ -280,22 +274,20 @@ export function GeneralTab({ settings, onChange }: Props) {
       <div className="my-3 h-px bg-black/[0.07]" />
 
       {/* Folder / Format / Retina */}
-      <div className="grid grid-cols-[182px_1fr] items-center gap-x-3 gap-y-2">
+      <div className="grid grid-cols-[136px_1fr] items-center gap-x-3 gap-y-2">
         <div className="text-right text-[12.5px] text-[#3A3A3C]">
-          Screenshots folder
+          Save folder
         </div>
         <button
           type="button"
           onClick={() => void pickFolder()}
           title={settings.screenshots_folder}
-          className="mac-btn flex h-[26px] w-full cursor-pointer items-center justify-center truncate rounded-[6px] px-2.5 text-[12.5px] font-normal text-[#1D1D1F] transition"
+          className="mac-btn flex h-[26px] w-full min-w-0 cursor-pointer items-center rounded-[6px] px-2.5 text-left font-mono text-[11.5px] font-normal text-[#1D1D1F] transition"
         >
-          <span className="truncate">{folderShortName}</span>
+          <span className="truncate">{folderDisplay}</span>
         </button>
 
-        <div className="text-right text-[12.5px] text-[#3A3A3C]">
-          Save format
-        </div>
+        <div className="text-right text-[12.5px] text-[#3A3A3C]">Format</div>
         <div className="flex items-center gap-3.5">
           <MacRadio
             checked={settings.save_format === "png"}
@@ -304,19 +296,19 @@ export function GeneralTab({ settings, onChange }: Props) {
           />
           <MacRadio
             checked={settings.save_format === "auto"}
-            label="Auto (PNG/JPEG)"
+            label="Auto"
             onClick={() => onChange({ save_format: "auto" as SaveFormat })}
           />
-          <TooltipBadge text="Auto uses lossless PNG for UI & transparency, and high-quality JPEG for large photographic captures." />
+          <TooltipBadge text="PNG for UI/transparency, JPEG for large photos." />
         </div>
 
         <div className="text-right text-[12.5px] text-[#3A3A3C]">
-          Resize retina screenshots
+          Retina resize
         </div>
         <div>
           <MacCheckbox
             checked={settings.resize_retina_1x}
-            label="Downscale to 1× when saving"
+            label="Downscale to 1×"
             onClick={() =>
               onChange({ resize_retina_1x: !settings.resize_retina_1x })
             }
@@ -327,9 +319,9 @@ export function GeneralTab({ settings, onChange }: Props) {
       <div className="my-3 h-px bg-black/[0.07]" />
 
       {/* Scrolling settings */}
-      <div className="grid grid-cols-[182px_1fr] items-center gap-x-3 gap-y-2">
+      <div className="grid grid-cols-[136px_1fr] items-center gap-x-3 gap-y-2">
         <div className="text-right text-[12.5px] text-[#3A3A3C]">
-          Scrolling screenshot max height
+          Scroll max height
         </div>
         <div className="flex items-center gap-1.5">
           <input
@@ -348,7 +340,7 @@ export function GeneralTab({ settings, onChange }: Props) {
         </div>
 
         <div className="text-right text-[12.5px] text-[#3A3A3C]">
-          Scrolling screenshot speed
+          Scroll speed
         </div>
         <div className="flex flex-col pt-0.5">
           <input
@@ -378,18 +370,18 @@ export function GeneralTab({ settings, onChange }: Props) {
       <div className="my-3 h-px bg-black/[0.07]" />
 
       {/* Startup & Post-capture workflow */}
-      <div className="grid grid-cols-[182px_1fr] items-center gap-x-3 gap-y-2">
+      <div className="grid grid-cols-[136px_1fr] items-center gap-x-3 gap-y-2">
         <div className="text-right text-[12.5px] text-[#3A3A3C]">Autostart</div>
         <div>
           <MacCheckbox
             checked={settings.autostart}
-            label="Launch at startup"
+            label="Launch at login"
             onClick={() => onChange({ autostart: !settings.autostart })}
           />
         </div>
 
         <div className="text-right text-[12.5px] text-[#3A3A3C]">
-          After screenshot
+          After capture
         </div>
         <div className="flex items-center gap-3.5">
           <MacCheckbox
@@ -422,7 +414,7 @@ export function GeneralTab({ settings, onChange }: Props) {
         </div>
 
         <div className="text-right text-[12.5px] text-[#3A3A3C]">
-          After Area Crop, show
+          After crop
         </div>
         <div className="flex items-center gap-3.5">
           <MacRadio
@@ -442,7 +434,7 @@ export function GeneralTab({ settings, onChange }: Props) {
         </div>
 
         <div className="text-right text-[12.5px] text-[#3A3A3C]">
-          Hide preview thumbnail
+          Hide thumbnail
         </div>
         <div className="relative">
           <select
@@ -459,10 +451,10 @@ export function GeneralTab({ settings, onChange }: Props) {
                 : "cursor-pointer border border-black/[0.12] bg-white text-[#1D1D1F] shadow-[0_0.5px_1px_rgba(0,0,0,0.05)] focus:border-[#007AFF] focus:ring-[3px] focus:ring-[#007AFF]/20"
             }`}
           >
-            <option value="manually">Manually (close button)</option>
-            <option value="after5s">After 5 seconds</option>
-            <option value="after10s">After 10 seconds</option>
-            <option value="after30s">After 30 seconds</option>
+            <option value="manually">Manually</option>
+            <option value="after5s">After 5s</option>
+            <option value="after10s">After 10s</option>
+            <option value="after30s">After 30s</option>
           </select>
           <ChevronsUpDown
             className={`pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 ${

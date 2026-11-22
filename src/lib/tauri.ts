@@ -221,3 +221,7 @@ export async function openPreferencesWindow(): Promise<void> {
 export async function openScreenshotsFolder(): Promise<void> {
   return invoke("open_screenshots_folder");
 }
+
+export async function openExternalUrl(url: string): Promise<void> {
+  return invoke("open_external_url", { url });
+}

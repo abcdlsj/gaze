@@ -53,10 +53,8 @@ export function EditorTab({ settings, onChange }: Props) {
 
   return (
     <div className="flex flex-col px-5 py-3.5">
-      <div className="grid grid-cols-[164px_1fr] items-center gap-x-3 gap-y-2.5">
-        <div className="text-right text-[12.5px] text-[#3A3A3C]">
-          Default annotation color
-        </div>
+      <div className="grid grid-cols-[124px_1fr] items-center gap-x-3 gap-y-2.5">
+        <div className="text-right text-[12.5px] text-[#3A3A3C]">Color</div>
         <div className="flex items-center gap-1.5">
           {PRESET_COLORS.map((hex) => {
             const active = ed.default_color.toLowerCase() === hex.toLowerCase();
@@ -80,9 +78,7 @@ export function EditorTab({ settings, onChange }: Props) {
           })}
         </div>
 
-        <div className="text-right text-[12.5px] text-[#3A3A3C]">
-          Default stroke width
-        </div>
+        <div className="text-right text-[12.5px] text-[#3A3A3C]">Stroke</div>
         <div className="flex items-center gap-2.5">
           <input
             type="range"
@@ -102,9 +98,7 @@ export function EditorTab({ settings, onChange }: Props) {
           </span>
         </div>
 
-        <div className="text-right text-[12.5px] text-[#3A3A3C]">
-          Default text size
-        </div>
+        <div className="text-right text-[12.5px] text-[#3A3A3C]">Text size</div>
         <div className="flex items-center gap-2.5">
           <input
             type="range"
@@ -122,9 +116,7 @@ export function EditorTab({ settings, onChange }: Props) {
           </span>
         </div>
 
-        <div className="text-right text-[12.5px] text-[#3A3A3C]">
-          Blur / Pixelate strength
-        </div>
+        <div className="text-right text-[12.5px] text-[#3A3A3C]">Blur</div>
         <div className="flex items-center gap-2.5">
           <input
             type="range"
@@ -147,21 +139,21 @@ export function EditorTab({ settings, onChange }: Props) {
 
       <div className="my-3.5 h-px bg-black/[0.07]" />
 
-      <div className="grid grid-cols-[164px_1fr] items-start gap-x-3">
+      <div className="grid grid-cols-[124px_1fr] items-start gap-x-3">
         <div className="pt-0.5 text-right text-[12.5px] text-[#3A3A3C]">
-          Window behavior
+          Auto-close
         </div>
         <div className="flex flex-col gap-2">
           <SoftCheckbox
             checked={ed.copy_closes_editor}
-            label="Close Editor after copying to clipboard"
+            label="Close after copy"
             onClick={() =>
               patchEditor({ copy_closes_editor: !ed.copy_closes_editor })
             }
           />
           <SoftCheckbox
             checked={ed.save_closes_editor}
-            label="Close Editor after saving to disk"
+            label="Close after save"
             onClick={() =>
               patchEditor({ save_closes_editor: !ed.save_closes_editor })
             }

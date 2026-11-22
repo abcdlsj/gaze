@@ -61,7 +61,7 @@ pub fn open_preferences(app: &AppHandle) -> Result<(), String> {
         WebviewUrl::App("index.html?window=preferences".into()),
     )
     .title("Preferences")
-    .inner_size(500.0, 548.0)
+    .inner_size(500.0, 504.0)
     .resizable(false)
     .maximizable(false)
     .minimizable(true)
@@ -321,31 +321,81 @@ pub fn open_thumbnail(
     Ok(())
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ScrollHudRect {
+    /// Global monitor coordinates (logical points on macOS, physical pixels on Windows).
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
 pub fn open_scroll_hud(
     app: &AppHandle,
     monitor_x: i32,
     monitor_y: i32,
     monitor_width: u32,
+    monitor_height: u32,
+    region_x: u32,
+    region_y: u32,
+    region_w: u32,
+    region_h: u32,
     #[allow(unused_variables)] scale_factor: f32,
-) -> Result<(), String> {
+) -> Result<ScrollHudRect, String> {
     if let Some(existing) = app.get_webview_window(LABEL_SCROLL_HUD) {
         let _ = existing.destroy();
     }
 
     #[cfg(target_os = "macos")]
-    let (mx, my, mw) = (monitor_x as f64, monitor_y as f64, monitor_width as f64);
+    let (mx, my, mw, mh, rx, ry, rw, rh, scale) = (
+        monitor_x as f64,
+        monitor_y as f64,
+        monitor_width as f64,
+        monitor_height as f64,
+        region_x as f64,
+        region_y as f64,
+        region_w as f64,
+        region_h as f64,
+        1.0f64,
+    );
 
     #[cfg(not(target_os = "macos"))]
-    let (mx, my, mw) = {
+    let (mx, my, mw, mh, rx, ry, rw, rh, scale) = {
         let s = scale_factor.max(1.0) as f64;
-        (monitor_x as f64 / s, monitor_y as f64 / s, monitor_width as f64 / s)
+        (
+            monitor_x as f64 / s,
+            monitor_y as f64 / s,
+            monitor_width as f64 / s,
+            monitor_height as f64 / s,
+            region_x as f64 / s,
+            region_y as f64 / s,
+            region_w as f64 / s,
+            region_h as f64 / s,
+            s,
+        )
     };
 
     let hud_w = 360.0;
     let hud_h = 56.0;
-    let x = mx + (mw - hud_w) * 0.5;
-    // Place safely below the macOS menu bar & notch.
-    let y = my + 56.0;
+    let gap = 14.0;
+    let top_safe = 44.0;
+    let bottom_safe = 16.0;
+
+    // Prefer placing the HUD outside the capture region so it never obstructs scrolling
+    // or competes for pointer events (and mark it content_protected so it never appears in frames).
+    let centered_x = (mx + rx + (rw - hud_w) * 0.5).clamp(mx + 12.0, mx + (mw - hud_w - 12.0).max(12.0));
+    let (x, y) = if ry >= top_safe + hud_h + gap {
+        (centered_x, my + ry - hud_h - gap)
+    } else if ry + rh + gap + hud_h + bottom_safe <= mh {
+        (centered_x, my + ry + rh + gap)
+    } else if rx + rw + gap + hud_w + 12.0 <= mw {
+        (mx + rx + rw + gap, my + (ry + (rh - hud_h) * 0.5).clamp(top_safe, mh - hud_h - bottom_safe))
+    } else if rx >= hud_w + gap + 12.0 {
+        (mx + rx - hud_w - gap, my + (ry + (rh - hud_h) * 0.5).clamp(top_safe, mh - hud_h - bottom_safe))
+    } else {
+        // Fullscreen-ish selection: place safely below menu bar & notch.
+        (mx + (mw - hud_w) * 0.5, my + 56.0)
+    };
 
     WebviewWindowBuilder::new(
         app,
@@ -361,9 +411,16 @@ pub fn open_scroll_hud(
     .shadow(true)
     .resizable(false)
     .focused(false)
+    .content_protected(true)
     .build()
     .map_err(|e| format!("Failed to open Scroll HUD: {e}"))?;
-    Ok(())
+
+    Ok(ScrollHudRect {
+        x: (x * scale).round() as i32,
+        y: (y * scale).round() as i32,
+        width: (hud_w * scale).round() as u32,
+        height: (hud_h * scale).round() as u32,
+    })
 }
 
 pub fn close_scroll_hud(app: &AppHandle) {

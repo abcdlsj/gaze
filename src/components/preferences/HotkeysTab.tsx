@@ -21,28 +21,28 @@ const ROWS: {
 }[] = [
   {
     key: "capture_area",
-    label: "Capture Area",
-    hint: "Drag to capture a region (default F1)",
+    label: "Area",
+    hint: "Capture selected region",
   },
   {
     key: "capture_scrolling",
-    label: "Scrolling Screenshot",
-    hint: "Auto-scroll and stitch long pages",
+    label: "Scrolling",
+    hint: "Auto-scroll long capture",
   },
   {
     key: "capture_fullscreen",
-    label: "Capture Fullscreen",
-    hint: "Instant capture of the active display",
+    label: "Fullscreen",
+    hint: "Capture active display",
   },
   {
     key: "capture_window",
-    label: "Capture Window",
-    hint: "Hover and click any app window",
+    label: "Window",
+    hint: "Capture clicked window",
   },
   {
     key: "open_clipboard",
-    label: "Open from Clipboard",
-    hint: "Open clipboard image directly in Editor",
+    label: "Clipboard",
+    hint: "Open image in Editor",
   },
 ];
 
@@ -121,10 +121,10 @@ export function HotkeysTab({
     <div className="flex flex-col px-5 py-3.5">
       <div className="mb-2.5">
         <h3 className="text-[13px] font-semibold tracking-[-0.01em] text-[#1D1D1F]">
-          Global Shortcuts
+          Shortcuts
         </h3>
         <p className="mt-0.5 text-[11px] text-[#86868B]">
-          Click any key box and press F1–F12 or a modifier combo. Esc cancels.
+          Click to record. Esc cancels.
         </p>
       </div>
 
@@ -196,8 +196,7 @@ export function HotkeysTab({
 
       <div className="mt-3 flex items-center justify-between gap-3">
         <span className="text-[11px] leading-snug text-[#86868B]">
-          On MacBooks where F1 adjusts brightness, press Fn+F1 or enable
-          standard function keys in Keyboard Settings.
+          MacBook: use Fn+F1 or enable standard F-keys.
         </span>
         <button
           type="button"

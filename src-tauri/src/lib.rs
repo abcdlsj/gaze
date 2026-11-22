@@ -204,6 +204,7 @@ fn update_settings(
         *state.hotkey_errors.lock() = errs.clone();
         errs
     };
+    tray::update_tray_menu(&app, &new_settings.hotkeys);
     *state.settings.lock() = new_settings;
     Ok(errors)
 }
@@ -235,6 +236,7 @@ fn reset_settings(
     defaults.save()?;
     let errors = hotkeys::sync_hotkeys(&app, &defaults.hotkeys, dispatch_capture_action);
     *state.hotkey_errors.lock() = errors;
+    tray::update_tray_menu(&app, &defaults.hotkeys);
     *state.settings.lock() = defaults.clone();
     Ok(defaults)
 }
@@ -630,6 +632,35 @@ fn open_screenshots_folder(state: State<'_, Arc<AppState>>) -> Result<(), String
 }
 
 #[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    if !url.starts_with("https://") && !url.starts_with("http://") {
+        return Err("Only http/https URLs are supported".to_string());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", &url])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn start_scrolling_capture(
     app: AppHandle,
     state: State<'_, Arc<AppState>>,
@@ -665,19 +696,16 @@ pub fn run() {
             }
 
             let handle = app.handle().clone();
-            tray::setup_tray(&handle, dispatch_capture_action)
+            let settings = app_state.settings.lock().clone();
+            tray::setup_tray(&handle, &settings.hotkeys, dispatch_capture_action)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
-            let settings = app_state.settings.lock().clone();
             let errors =
                 hotkeys::sync_hotkeys(&handle, &settings.hotkeys, dispatch_capture_action);
             *app_state.hotkey_errors.lock() = errors;
 
             // Pre-warm hidden overlay webview so F1 capture opens instantaneously.
             windows::prewarm_overlay(&handle);
-
-            // Open Preferences on first launch so user immediately sees Gaze is ready.
-            let _ = windows::open_preferences(&handle);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -711,6 +739,7 @@ pub fn run() {
             open_editor_for_capture,
             open_preferences_window,
             open_screenshots_folder,
+            open_external_url,
             start_scrolling_capture,
             stop_scrolling_capture,
         ])

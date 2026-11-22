@@ -48,10 +48,10 @@ export function AdvancedTab({ onResetDefaults }: Props) {
           <div className="mb-2 flex items-center justify-between">
             <div>
               <h3 className="text-[13px] font-semibold tracking-[-0.01em] text-[#1D1D1F]">
-                macOS Permissions
+                Permissions
               </h3>
               <p className="text-[11px] text-[#86868B]">
-                Required for screen capture and automatic scrolling screenshots.
+                Required for capture and scrolling.
               </p>
             </div>
             <button
@@ -77,9 +77,7 @@ export function AdvancedTab({ onResetDefaults }: Props) {
                     Screen Recording
                   </div>
                   <div className="text-[11px] text-[#86868B]">
-                    {perms.screen_recording
-                      ? "Granted — ready to capture screens & windows"
-                      : "Needed to capture screen pixels"}
+                    {perms.screen_recording ? "Granted" : "Required for capture"}
                   </div>
                 </div>
               </div>
@@ -109,9 +107,7 @@ export function AdvancedTab({ onResetDefaults }: Props) {
                     Accessibility
                   </div>
                   <div className="text-[11px] text-[#86868B]">
-                    {perms.accessibility
-                      ? "Granted — ready for auto-scrolling capture"
-                      : "Needed for auto-scroll wheel simulation"}
+                    {perms.accessibility ? "Granted" : "Required for scrolling"}
                   </div>
                 </div>
               </div>
@@ -131,7 +127,7 @@ export function AdvancedTab({ onResetDefaults }: Props) {
 
       <div className="rounded-lg border border-black/[0.08] bg-[#FAFAFC] p-3">
         <h3 className="text-[13px] font-semibold tracking-[-0.01em] text-[#1D1D1F]">
-          Storage & Maintenance
+          Storage
         </h3>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <button
@@ -140,7 +136,7 @@ export function AdvancedTab({ onResetDefaults }: Props) {
             className="mac-btn inline-flex cursor-pointer items-center gap-1.5 rounded-[6px] px-2.5 py-1.5 text-[12px] font-medium text-[#1D1D1F] transition"
           >
             <FolderOpen className="h-3.5 w-3.5" />
-            <span>Open Screenshots Folder</span>
+            <span>Open Folder</span>
           </button>
 
           <button
@@ -149,9 +145,7 @@ export function AdvancedTab({ onResetDefaults }: Props) {
             className="inline-flex cursor-pointer items-center gap-1.5 rounded-[6px] border border-black/[0.1] bg-white px-2.5 py-1.5 text-[12px] font-medium text-[#3A3A3C] transition hover:border-[#FF3B30]/40 hover:bg-[#FF3B30]/[0.05] hover:text-[#FF3B30]"
           >
             <RotateCcw className="h-3.5 w-3.5" />
-            <span>
-              {resetDone ? "Defaults Restored!" : "Reset All Settings"}
-            </span>
+            <span>{resetDone ? "Reset!" : "Reset Defaults"}</span>
           </button>
         </div>
       </div>
