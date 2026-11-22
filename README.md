@@ -47,3 +47,30 @@ On first use on macOS, grant permissions in **Preferences → Advanced** (or Sys
 2. **Accessibility** — required for automatic mouse-wheel scrolling during long screenshots.
 
 > Tip: On macOS laptops where `F1` adjusts display brightness by default, press `Fn+F1` or enable *"Use F1, F2, etc. keys as standard function keys"* in Keyboard Settings, or rebind the shortcut in **Preferences → Hotkeys**.
+
+## Install
+
+macOS, through the Homebrew tap:
+
+```sh
+brew tap abcdlsj/tap
+brew trust abcdlsj/tap
+brew install --cask gaze
+```
+
+Otherwise download `gaze_<version>_darwin_universal.dmg` or `gaze_<version>_windows_amd64.zip` from
+[Releases](https://github.com/abcdlsj/gaze/releases).
+
+The macOS build is ad-hoc signed (no Developer ID, not notarised). Homebrew installs carry no
+`com.apple.quarantine` attribute, so `brew install` launches normally; a dmg downloaded through a
+browser is blocked by Gatekeeper — right-click → **Open**, or
+`xattr -dr com.apple.quarantine /Applications/Gaze.app`.
+
+## Releasing
+
+Tagging `vX.Y.Z` runs [`.github/workflows/release.yml`](.github/workflows/release.yml): it builds the
+universal macOS dmg and the Windows zip, publishes the GitHub release, and attaches a `gaze.rb`
+cask generated from the real dmg checksum. Copy that file to `abcdlsj/homebrew-tap`'s `Casks/`.
+
+Bump the version in `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json` before
+tagging; the About tab reads it from the bundle at runtime.
