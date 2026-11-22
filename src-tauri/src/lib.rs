@@ -689,7 +689,7 @@ pub fn run() {
             let handle = app.handle().clone();
             let settings = app_state.settings.lock().clone();
             tray::setup_tray(&handle, &settings.hotkeys, dispatch_capture_action)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                .map_err(std::io::Error::other)?;
 
             let errors = hotkeys::sync_hotkeys(&handle, &settings.hotkeys, dispatch_capture_action);
             *app_state.hotkey_errors.lock() = errors;

@@ -332,6 +332,9 @@ pub struct ScrollHudRect {
     pub height: u32,
 }
 
+// The HUD needs both the monitor and the capture region in one call; splitting the
+// geometry into a struct would only move the same numbers around.
+#[allow(clippy::too_many_arguments)]
 pub fn open_scroll_hud(
     app: &AppHandle,
     monitor_x: i32,

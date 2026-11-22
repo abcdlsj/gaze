@@ -496,9 +496,9 @@ fn build_row_signatures(img: &RgbaImage, cols: &[u32]) -> RowSignatures {
 
     // Pick SIG_LEN evenly spaced columns from `cols`.
     let mut sig_cols = [0usize; SIG_LEN];
-    for i in 0..SIG_LEN {
+    for (i, slot) in sig_cols.iter_mut().enumerate() {
         let idx = (i * cols.len()) / SIG_LEN;
-        sig_cols[i] = (cols[idx.min(cols.len() - 1)] as usize) * 4;
+        *slot = (cols[idx.min(cols.len() - 1)] as usize) * 4;
     }
 
     let mut luma = Vec::with_capacity(h);

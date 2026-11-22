@@ -15,7 +15,7 @@ extern "C" {
 
 #[cfg(target_os = "macos")]
 pub fn check_permissions() -> PermissionStatus {
-    let screen_recording = core_graphics::access::ScreenCaptureAccess::default().preflight();
+    let screen_recording = core_graphics::access::ScreenCaptureAccess.preflight();
     let accessibility = unsafe { AXIsProcessTrusted() };
     PermissionStatus {
         screen_recording,
@@ -35,7 +35,7 @@ pub fn check_permissions() -> PermissionStatus {
 
 #[cfg(target_os = "macos")]
 pub fn request_screen_recording_prompt() -> bool {
-    core_graphics::access::ScreenCaptureAccess::default().request()
+    core_graphics::access::ScreenCaptureAccess.request()
 }
 
 #[cfg(not(target_os = "macos"))]

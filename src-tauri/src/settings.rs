@@ -4,58 +4,42 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum WindowBackground {
     Wallpaper,
+    #[default]
     Transparent,
     SolidColor,
     TrimShadow,
 }
 
-impl Default for WindowBackground {
-    fn default() -> Self {
-        Self::Transparent
-    }
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum SaveFormat {
     Png,
+    #[default]
     Auto,
 }
 
-impl Default for SaveFormat {
-    fn default() -> Self {
-        Self::Auto
-    }
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum AfterAreaCrop {
     Thumbnail,
+    #[default]
     Editor,
 }
 
-impl Default for AfterAreaCrop {
-    fn default() -> Self {
-        Self::Editor
-    }
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ThumbnailAutoHide {
+    #[default]
     Manually,
     After5s,
     After10s,
     After30s,
-}
-
-impl Default for ThumbnailAutoHide {
-    fn default() -> Self {
-        Self::Manually
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -231,9 +215,11 @@ mod tests {
 
     #[test]
     fn roundtrip_serialization_and_clamp() {
-        let mut s = AppSettings::default();
-        s.scrolling_max_height = 999_999;
-        s.scrolling_speed = 250;
+        let mut s = AppSettings {
+            scrolling_max_height: 999_999,
+            scrolling_speed: 250,
+            ..Default::default()
+        };
         s.clamp();
         assert_eq!(s.scrolling_max_height, 50_000);
         assert_eq!(s.scrolling_speed, 100);
