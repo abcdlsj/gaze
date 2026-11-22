@@ -79,16 +79,16 @@ jobs:
         run: |
           set -euo pipefail
           BASE="src-tauri/target/universal-apple-darwin/release/bundle"
-          mkdir -p dist
+          mkdir -p artifacts
           DMG="$(ls "$BASE"/dmg/*.dmg | head -1)"
-          mv "$DMG" "dist/gaze_${VERSION}_darwin_universal.dmg"
+          mv "$DMG" "artifacts/gaze_${VERSION}_darwin_universal.dmg"
           ditto -c -k --sequesterRsrc --keepParent "$BASE/macos/Gaze.app" \
-            "dist/gaze_${VERSION}_darwin_universal.zip"
-          shasum -a 256 dist/* | tee dist/SHA256SUMS-darwin.txt
+            "artifacts/gaze_${VERSION}_darwin_universal.zip"
+          shasum -a 256 artifacts/* | tee artifacts/SHA256SUMS-darwin.txt
       - uses: actions/upload-artifact@v4
         with:
           name: darwin
-          path: dist/*
+          path: artifacts/*
           if-no-files-found: error
 
   windows:
@@ -118,20 +118,20 @@ jobs:
           VERSION: ${{ needs.check-version.outputs.version }}
         run: |
           $ErrorActionPreference = "Stop"
-          New-Item -ItemType Directory -Force dist | Out-Null
+          New-Item -ItemType Directory -Force artifacts | Out-Null
           $nsis = Get-ChildItem src-tauri/target/release/bundle/nsis/*.exe | Select-Object -First 1
           $msi  = Get-ChildItem src-tauri/target/release/bundle/msi/*.msi  | Select-Object -First 1
-          Copy-Item $nsis.FullName "dist/gaze_$($env:VERSION)_windows_amd64_setup.exe"
-          Copy-Item $msi.FullName  "dist/gaze_$($env:VERSION)_windows_amd64.msi"
+          Copy-Item $nsis.FullName "artifacts/gaze_$($env:VERSION)_windows_amd64_setup.exe"
+          Copy-Item $msi.FullName  "artifacts/gaze_$($env:VERSION)_windows_amd64.msi"
           Compress-Archive -Path src-tauri/target/release/Gaze.exe `
-            -DestinationPath "dist/gaze_$($env:VERSION)_windows_amd64_portable.zip"
-          Get-ChildItem dist | ForEach-Object {
+            -DestinationPath "artifacts/gaze_$($env:VERSION)_windows_amd64_portable.zip"
+          Get-ChildItem artifacts -File | ForEach-Object {
             "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
-          } | Set-Content dist/SHA256SUMS-windows.txt
+          } | Set-Content artifacts/SHA256SUMS-windows.txt
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: dist/*
+          path: artifacts/*
           if-no-files-found: error
 
   publish:
@@ -146,7 +146,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
-          path: dist
+          path: artifacts
           merge-multiple: true
       - name: Release notes
         env:
@@ -200,7 +200,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.check-version.outputs.version }}
           TAG: ${{ inputs.tag || github.ref_name }}
-        run: gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --title "Gaze $VERSION" --notes-file NOTES.md
+        # Idempotent so a failed or re-run workflow can publish the same tag again.
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "Gaze $VERSION" --notes-file NOTES.md
+            gh release upload "$TAG" artifacts/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" artifacts/* --repo "$GITHUB_REPOSITORY" --title "Gaze $VERSION" --notes-file NOTES.md
+          fi
 
       # The cask pins the universal dmg, so it can only be written once that file
       # exists: generate it from the release asset itself, never from a transcription.
@@ -211,8 +219,8 @@ jobs:
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
-          DMG="dist/gaze_${VERSION}_darwin_universal.dmg"
-          [ -f "$DMG" ] || { echo "::error::missing $DMG"; ls -R dist; exit 1; }
+          DMG="artifacts/gaze_${VERSION}_darwin_universal.dmg"
+          [ -f "$DMG" ] || { echo "::error::missing $DMG"; ls -R artifacts; exit 1; }
           SHA="$(sha256sum "$DMG" | cut -d' ' -f1)"
           cat > gaze.rb <<EOF
           # typed: strict
