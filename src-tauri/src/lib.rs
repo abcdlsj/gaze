@@ -55,13 +55,15 @@ pub fn dispatch_capture_action(app: AppHandle, action: &'static str) {
             hotkeys::ACTION_AREA => start_overlay_capture(&app, &state, "area"),
             hotkeys::ACTION_WINDOW => start_overlay_capture(&app, &state, "window"),
             hotkeys::ACTION_SCROLLING => start_overlay_capture(&app, &state, "scrolling"),
-            hotkeys::ACTION_FULLSCREEN => capture::capture_fullscreen().and_then(|(img, scale, bounds)| {
-                let meta = state
-                    .store
-                    .lock()
-                    .insert(img, scale, "fullscreen", Some(bounds));
-                finalize_capture(&app, &state, &meta, false)
-            }),
+            hotkeys::ACTION_FULLSCREEN => {
+                capture::capture_fullscreen().and_then(|(img, scale, bounds)| {
+                    let meta = state
+                        .store
+                        .lock()
+                        .insert(img, scale, "fullscreen", Some(bounds));
+                    finalize_capture(&app, &state, &meta, false)
+                })
+            }
             hotkeys::ACTION_CLIPBOARD => clipboard::read_image_from_clipboard().and_then(|img| {
                 let meta = state.store.lock().insert(img, 1.0, "clipboard", None);
                 windows::open_editor(
@@ -78,7 +80,8 @@ pub fn dispatch_capture_action(app: AppHandle, action: &'static str) {
         if let Err(err) = result {
             eprintln!("[gaze] capture action '{action}' failed: {err}");
             #[cfg(target_os = "macos")]
-            if action != hotkeys::ACTION_CLIPBOARD && !permissions::check_permissions().screen_recording
+            if action != hotkeys::ACTION_CLIPBOARD
+                && !permissions::check_permissions().screen_recording
             {
                 let _ = permissions::request_screen_recording_prompt();
                 let _ = windows::open_preferences(&app);
@@ -228,10 +231,7 @@ fn set_hotkeys_suspended(
 }
 
 #[tauri::command]
-fn reset_settings(
-    app: AppHandle,
-    state: State<'_, Arc<AppState>>,
-) -> Result<AppSettings, String> {
+fn reset_settings(app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<AppSettings, String> {
     let defaults = AppSettings::default();
     defaults.save()?;
     let errors = hotkeys::sync_hotkeys(&app, &defaults.hotkeys, dispatch_capture_action);
@@ -463,10 +463,7 @@ fn complete_window_selection(
 }
 
 #[tauri::command]
-fn get_capture_meta(
-    state: State<'_, Arc<AppState>>,
-    id: String,
-) -> Result<CaptureMeta, String> {
+fn get_capture_meta(state: State<'_, Arc<AppState>>, id: String) -> Result<CaptureMeta, String> {
     state
         .store
         .lock()
@@ -476,10 +473,7 @@ fn get_capture_meta(
 }
 
 #[tauri::command]
-fn get_capture_image_png(
-    state: State<'_, Arc<AppState>>,
-    id: String,
-) -> Result<Response, String> {
+fn get_capture_image_png(state: State<'_, Arc<AppState>>, id: String) -> Result<Response, String> {
     let img = state
         .store
         .lock()
@@ -491,10 +485,7 @@ fn get_capture_image_png(
 }
 
 #[tauri::command]
-fn get_capture_image_raw(
-    state: State<'_, Arc<AppState>>,
-    id: String,
-) -> Result<Response, String> {
+fn get_capture_image_raw(state: State<'_, Arc<AppState>>, id: String) -> Result<Response, String> {
     let packed = state
         .store
         .lock()
@@ -700,8 +691,7 @@ pub fn run() {
             tray::setup_tray(&handle, &settings.hotkeys, dispatch_capture_action)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
-            let errors =
-                hotkeys::sync_hotkeys(&handle, &settings.hotkeys, dispatch_capture_action);
+            let errors = hotkeys::sync_hotkeys(&handle, &settings.hotkeys, dispatch_capture_action);
             *app_state.hotkey_errors.lock() = errors;
 
             // Pre-warm hidden overlay webview so F1 capture opens instantaneously.

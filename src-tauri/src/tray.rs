@@ -26,10 +26,7 @@ fn make_shortcut_item(
     MenuItem::with_id(app, id, label, true, None::<&str>).map_err(|e| e.to_string())
 }
 
-fn build_tray_menu(
-    app: &AppHandle,
-    hotkeys: &HotkeyConfig,
-) -> Result<Menu<tauri::Wry>, String> {
+fn build_tray_menu(app: &AppHandle, hotkeys: &HotkeyConfig) -> Result<Menu<tauri::Wry>, String> {
     let area = make_shortcut_item(app, "tray_area", "Capture Area", &hotkeys.capture_area)?;
     let fullscreen = make_shortcut_item(
         app,
@@ -37,8 +34,12 @@ fn build_tray_menu(
         "Capture Fullscreen",
         &hotkeys.capture_fullscreen,
     )?;
-    let window =
-        make_shortcut_item(app, "tray_window", "Capture Window", &hotkeys.capture_window)?;
+    let window = make_shortcut_item(
+        app,
+        "tray_window",
+        "Capture Window",
+        &hotkeys.capture_window,
+    )?;
     let scrolling = make_shortcut_item(
         app,
         "tray_scrolling",
@@ -83,18 +84,14 @@ pub fn update_tray_menu(app: &AppHandle, hotkeys: &HotkeyConfig) {
     }
 }
 
-pub fn setup_tray<F>(
-    app: &AppHandle,
-    hotkeys: &HotkeyConfig,
-    on_action: F,
-) -> Result<(), String>
+pub fn setup_tray<F>(app: &AppHandle, hotkeys: &HotkeyConfig, on_action: F) -> Result<(), String>
 where
     F: Fn(AppHandle, &'static str) + Send + Sync + Clone + 'static,
 {
     let menu = build_tray_menu(app, hotkeys)?;
 
-    let icon = Image::from_bytes(TRAY_ICON_BYTES)
-        .map_err(|e| format!("Failed to load tray icon: {e}"))?;
+    let icon =
+        Image::from_bytes(TRAY_ICON_BYTES).map_err(|e| format!("Failed to load tray icon: {e}"))?;
 
     let cb = on_action.clone();
     let builder = TrayIconBuilder::with_id(TRAY_ID)

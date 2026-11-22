@@ -129,9 +129,7 @@ impl Default for AppSettings {
         Self {
             window_background: WindowBackground::Transparent,
             solid_background_color: "#2C3036".to_string(),
-            screenshots_folder: default_screenshots_folder()
-                .to_string_lossy()
-                .to_string(),
+            screenshots_folder: default_screenshots_folder().to_string_lossy().to_string(),
             save_format: SaveFormat::Auto,
             resize_retina_1x: false,
             scrolling_max_height: 20_000,

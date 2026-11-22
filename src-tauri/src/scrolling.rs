@@ -298,13 +298,7 @@ pub fn start_scrolling_capture(
 
     let region_abs_x = monitor_x + rx as i32;
     let region_abs_y = monitor_y + ry as i32;
-    let (scroll_x, scroll_y) = choose_scroll_anchor(
-        region_abs_x,
-        region_abs_y,
-        rw,
-        rh,
-        hud_rect,
-    );
+    let (scroll_x, scroll_y) = choose_scroll_anchor(region_abs_x, region_abs_y, rw, rh, hud_rect);
 
     std::thread::spawn(move || {
         struct RunningGuard(Arc<AtomicBool>);
@@ -377,7 +371,17 @@ pub fn start_scrolling_capture(
 
         let _ = scroll_driver.move_pointer(scroll_x, scroll_y);
         if sleep_interruptible(70, &cancel_flag) {
-            finish_and_present(&app, &state, stitcher, max_height, scale_factor, monitor_x, monitor_y, monitor_w, monitor_h);
+            finish_and_present(
+                &app,
+                &state,
+                stitcher,
+                max_height,
+                scale_factor,
+                monitor_x,
+                monitor_y,
+                monitor_w,
+                monitor_h,
+            );
             return;
         }
 
@@ -399,8 +403,14 @@ pub fn start_scrolling_capture(
             // Respect the user moving the cursor onto the HUD to click Stop instead of yanking it back.
             if let Some((cx, cy)) = capture::get_cursor_position() {
                 if let Some(hud) = hud_rect {
-                    if point_in_rect(cx, cy, hud.x - 10, hud.y - 10, hud.width + 20, hud.height + 20)
-                    {
+                    if point_in_rect(
+                        cx,
+                        cy,
+                        hud.x - 10,
+                        hud.y - 10,
+                        hud.width + 20,
+                        hud.height + 20,
+                    ) {
                         sleep_interruptible(90, &cancel_flag);
                         continue;
                     }
@@ -413,7 +423,8 @@ pub fn start_scrolling_capture(
                 }
             }
 
-            let cur_step_pt = (base_step_pt * step_scale).clamp(24.0, (frame_pt_h * 0.72).max(48.0));
+            let cur_step_pt =
+                (base_step_pt * step_scale).clamp(24.0, (frame_pt_h * 0.72).max(48.0));
 
             if scroll_driver
                 .scroll_vertical(cur_step_pt * direction, use_line_mode, &cancel_flag)
@@ -621,8 +632,7 @@ pub fn start_scrolling_capture(
                             {
                                 direction = -direction;
                                 direction_confirmed = true;
-                                let return_pt =
-                                    (up_px as f32 / eff_scale) + (base_step_pt * 0.85);
+                                let return_pt = (up_px as f32 / eff_scale) + (base_step_pt * 0.85);
                                 let _ = scroll_driver.scroll_vertical(
                                     return_pt * direction,
                                     use_line_mode,
@@ -722,14 +732,7 @@ fn finish_and_present(
 ) {
     let frames = stitcher.frame_count();
     let final_image = stitcher.finish();
-    emit_progress(
-        app,
-        frames,
-        final_image.height(),
-        max_height,
-        "done",
-        None,
-    );
+    emit_progress(app, frames, final_image.height(), max_height, "done", None);
     windows::close_scroll_hud(app);
 
     let meta = state.store.lock().insert(
@@ -809,9 +812,8 @@ fn choose_scroll_anchor(
         return (default_x, default_y);
     };
 
-    let overlaps_hud = |px: i32, py: i32| {
-        point_in_rect(px, py, h.x - 8, h.y - 8, h.width + 16, h.height + 16)
-    };
+    let overlaps_hud =
+        |px: i32, py: i32| point_in_rect(px, py, h.x - 8, h.y - 8, h.width + 16, h.height + 16);
 
     if !overlaps_hud(default_x, default_y) {
         return (default_x, default_y);

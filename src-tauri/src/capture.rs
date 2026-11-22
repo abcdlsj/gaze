@@ -144,7 +144,11 @@ impl CaptureStore {
         let stored = StoredCapture {
             id: id.clone(),
             image,
-            scale_factor: if scale_factor > 0.0 { scale_factor } else { 1.0 },
+            scale_factor: if scale_factor > 0.0 {
+                scale_factor
+            } else {
+                1.0
+            },
             source: source.to_string(),
             monitor_bounds,
         };
@@ -381,8 +385,12 @@ pub fn crop_from_session(
     let rx = session.image.width() as f64 / (session.monitor_width.max(1) as f64);
     let ry = session.image.height() as f64 / (session.monitor_height.max(1) as f64);
 
-    let px = (x * rx).round().clamp(0.0, (session.image.width() - 1) as f64) as u32;
-    let py = (y * ry).round().clamp(0.0, (session.image.height() - 1) as f64) as u32;
+    let px = (x * rx)
+        .round()
+        .clamp(0.0, (session.image.width() - 1) as f64) as u32;
+    let py = (y * ry)
+        .round()
+        .clamp(0.0, (session.image.height() - 1) as f64) as u32;
     let pw = ((width * rx).round() as u32).clamp(1, session.image.width() - px);
     let ph = ((height * ry).round() as u32).clamp(1, session.image.height() - py);
 
@@ -545,7 +553,12 @@ pub fn encode_png(img: &RgbaImage) -> Result<Vec<u8>, String> {
     let mut buf = Vec::new();
     let encoder = PngEncoder::new(&mut buf);
     encoder
-        .write_image(img.as_raw(), img.width(), img.height(), ColorType::Rgba8.into())
+        .write_image(
+            img.as_raw(),
+            img.width(),
+            img.height(),
+            ColorType::Rgba8.into(),
+        )
         .map_err(|e| format!("PNG encode failed: {e}"))?;
     Ok(buf)
 }
@@ -555,7 +568,12 @@ fn encode_jpeg(img: &RgbaImage, quality: u8) -> Result<Vec<u8>, String> {
     let mut buf = Vec::new();
     let mut encoder = JpegEncoder::new_with_quality(&mut buf, quality);
     encoder
-        .encode(rgb.as_raw(), rgb.width(), rgb.height(), ColorType::Rgb8.into())
+        .encode(
+            rgb.as_raw(),
+            rgb.width(),
+            rgb.height(),
+            ColorType::Rgb8.into(),
+        )
         .map_err(|e| format!("JPEG encode failed: {e}"))?;
     Ok(buf)
 }
@@ -628,7 +646,15 @@ pub fn save_image_file(
                 };
                 encode_jpeg(&working, 92)?
             }
-            _ => encode_for_save(img, scale_factor, SaveFormat::Png, settings.resize_retina_1x)?.0,
+            _ => {
+                encode_for_save(
+                    img,
+                    scale_factor,
+                    SaveFormat::Png,
+                    settings.resize_retina_1x,
+                )?
+                .0
+            }
         };
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("Failed to create folder: {e}"))?;
@@ -679,7 +705,10 @@ mod tests {
 
     #[test]
     fn parse_hex_works() {
-        assert_eq!(parse_hex_color("#2C3036"), Some(Rgba([0x2c, 0x30, 0x36, 255])));
+        assert_eq!(
+            parse_hex_color("#2C3036"),
+            Some(Rgba([0x2c, 0x30, 0x36, 255]))
+        );
         assert_eq!(parse_hex_color("invalid"), None);
     }
 }

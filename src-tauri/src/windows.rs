@@ -1,5 +1,7 @@
 use crate::capture::{MonitorBounds, OverlaySessionInfo};
-use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindowBuilder,
+};
 
 #[cfg(target_os = "macos")]
 use tauri::TitleBarStyle;
@@ -383,15 +385,22 @@ pub fn open_scroll_hud(
 
     // Prefer placing the HUD outside the capture region so it never obstructs scrolling
     // or competes for pointer events (and mark it content_protected so it never appears in frames).
-    let centered_x = (mx + rx + (rw - hud_w) * 0.5).clamp(mx + 12.0, mx + (mw - hud_w - 12.0).max(12.0));
+    let centered_x =
+        (mx + rx + (rw - hud_w) * 0.5).clamp(mx + 12.0, mx + (mw - hud_w - 12.0).max(12.0));
     let (x, y) = if ry >= top_safe + hud_h + gap {
         (centered_x, my + ry - hud_h - gap)
     } else if ry + rh + gap + hud_h + bottom_safe <= mh {
         (centered_x, my + ry + rh + gap)
     } else if rx + rw + gap + hud_w + 12.0 <= mw {
-        (mx + rx + rw + gap, my + (ry + (rh - hud_h) * 0.5).clamp(top_safe, mh - hud_h - bottom_safe))
+        (
+            mx + rx + rw + gap,
+            my + (ry + (rh - hud_h) * 0.5).clamp(top_safe, mh - hud_h - bottom_safe),
+        )
     } else if rx >= hud_w + gap + 12.0 {
-        (mx + rx - hud_w - gap, my + (ry + (rh - hud_h) * 0.5).clamp(top_safe, mh - hud_h - bottom_safe))
+        (
+            mx + rx - hud_w - gap,
+            my + (ry + (rh - hud_h) * 0.5).clamp(top_safe, mh - hud_h - bottom_safe),
+        )
     } else {
         // Fullscreen-ish selection: place safely below menu bar & notch.
         (mx + (mw - hud_w) * 0.5, my + 56.0)

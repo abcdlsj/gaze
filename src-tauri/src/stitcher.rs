@@ -81,8 +81,8 @@ impl VerticalStitcher {
         // Fast stationary check: only short-circuit before shift matching when virtually zero rows changed.
         let changed_rows = same_diffs.iter().filter(|&&d| d > 2.5).count() as u32;
         let zero_trimmed = trimmed_mean_f32(&same_diffs, 0.85);
-        let zero_inlier_ratio =
-            same_diffs.iter().filter(|&&d| d <= 2.5).count() as f32 / (self.frame_height.max(1) as f32);
+        let zero_inlier_ratio = same_diffs.iter().filter(|&&d| d <= 2.5).count() as f32
+            / (self.frame_height.max(1) as f32);
 
         if changed_rows < 4 {
             return StitchOutcome::NoMovement;
@@ -354,7 +354,11 @@ fn select_active_columns(prev: &RgbaImage, next: &RgbaImage) -> Vec<u32> {
             cnt += 3;
             y += y_step;
         }
-        let col_mad = if cnt == 0 { 0.0 } else { sum as f32 / cnt as f32 };
+        let col_mad = if cnt == 0 {
+            0.0
+        } else {
+            sum as f32 / cnt as f32
+        };
         if col_mad > 2.2 {
             moving_cols.push(x);
         }
@@ -542,7 +546,9 @@ fn find_downward_shift_with_cols(
         return None;
     }
 
-    let min_overlap = (interior_h / 10).clamp(16, 48).min(interior_h.saturating_sub(2));
+    let min_overlap = (interior_h / 10)
+        .clamp(16, 48)
+        .min(interior_h.saturating_sub(2));
     let max_shift = interior_h.saturating_sub(min_overlap);
     if max_shift < 1 {
         return None;
@@ -567,7 +573,8 @@ fn find_downward_shift_with_cols(
 
     // Stage 1: Exhaustive 1D-signature coarse scan over EVERY shift in [1..=max_shift].
     // No anchor-band blind spots, and trimmed mean ignores translucent sticky headers & overlays.
-    let mut coarse_scores: Vec<(u32, f32)> = Vec::with_capacity((max_shift / coarse_step) as usize + 2);
+    let mut coarse_scores: Vec<(u32, f32)> =
+        Vec::with_capacity((max_shift / coarse_step) as usize + 2);
     let mut errs_buf: Vec<f32> = Vec::with_capacity(44);
     let mut detail_errs_buf: Vec<f32> = Vec::with_capacity(44);
 
@@ -675,7 +682,8 @@ fn find_downward_shift_with_cols(
                 let y_prev = scroll_top + s + dy;
                 let d = row_mad_cols(prev, y_prev, next, y_next, cols);
                 rgb_errs.push(d);
-                if sig_prev.energy[y_prev as usize] > 1.8 || sig_next.energy[y_next as usize] > 1.8 {
+                if sig_prev.energy[y_prev as usize] > 1.8 || sig_next.energy[y_next as usize] > 1.8
+                {
                     rgb_detail_errs.push(d);
                 }
             }
@@ -706,7 +714,10 @@ fn find_downward_shift_with_cols(
                 (trimmed_rgb + 1.5, inliers)
             };
 
-            if trimmed_rgb > 12.5 || inliers < 0.65 || detail_trimmed > 14.0 || detail_inliers < 0.60
+            if trimmed_rgb > 12.5
+                || inliers < 0.65
+                || detail_trimmed > 14.0
+                || detail_inliers < 0.60
             {
                 continue;
             }

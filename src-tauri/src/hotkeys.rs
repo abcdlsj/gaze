@@ -10,7 +10,11 @@ pub const ACTION_SCROLLING: &str = "capture_scrolling";
 pub const ACTION_CLIPBOARD: &str = "open_clipboard";
 
 /// Re-registers all configured global hotkeys. Returns a map of action -> optional error string.
-pub fn sync_hotkeys<F>(app: &AppHandle, config: &HotkeyConfig, on_action: F) -> HashMap<String, Option<String>>
+pub fn sync_hotkeys<F>(
+    app: &AppHandle,
+    config: &HotkeyConfig,
+    on_action: F,
+) -> HashMap<String, Option<String>>
 where
     F: Fn(AppHandle, &'static str) + Send + Sync + Clone + 'static,
 {
