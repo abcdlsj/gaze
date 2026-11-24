@@ -13,10 +13,11 @@ import {
 import type { CaptureMeta } from "../types";
 
 export function PinWindow({ captureId }: { captureId: string }) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const [imgUrl, setImgUrl] = useState<string | null>(null);
   const [meta, setMeta] = useState<CaptureMeta | null>(null);
   const [opacity, setOpacity] = useState(1);
-  const [scale, setScale] = useState(1);
+  const scaleRef = useRef(1);
   const [copied, setCopied] = useState(false);
   const revealedRef = useRef(false);
   const modKey = isMacPlatform() ? "⌘" : "Ctrl+";
@@ -68,34 +69,41 @@ export function PinWindow({ captureId }: { captureId: string }) {
     };
   }, [captureId]);
 
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    if (e.altKey) {
-      setOpacity((o) =>
-        Math.max(0.25, Math.min(1, Number((o - e.deltaY * 0.002).toFixed(2)))),
+  // Native non-passive wheel listener so WKWebView honors preventDefault() while resizing/fading pin
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      if (e.altKey) {
+        setOpacity((o) =>
+          Math.max(0.25, Math.min(1, Number((o - e.deltaY * 0.002).toFixed(2)))),
+        );
+        return;
+      }
+      if (!meta) return;
+      const nextScale = Math.max(
+        0.35,
+        Math.min(3.0, scaleRef.current * (e.deltaY < 0 ? 1.08 : 0.92)),
       );
-      return;
-    }
-    if (!meta) return;
-    const nextScale = Math.max(
-      0.35,
-      Math.min(3.0, scale * (e.deltaY < 0 ? 1.08 : 0.92)),
-    );
-    setScale(nextScale);
-    const baseW = meta.width / meta.scale_factor;
-    const baseH = meta.height / meta.scale_factor;
-    void getCurrentWindow().setSize(
-      new LogicalSize(
-        Math.max(80, Math.round(baseW * nextScale)),
-        Math.max(60, Math.round(baseH * nextScale)),
-      ),
-    );
-  };
+      scaleRef.current = nextScale;
+      const baseW = meta.width / meta.scale_factor;
+      const baseH = meta.height / meta.scale_factor;
+      void getCurrentWindow().setSize(
+        new LogicalSize(
+          Math.max(80, Math.round(baseW * nextScale)),
+          Math.max(60, Math.round(baseH * nextScale)),
+        ),
+      );
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [meta]);
 
   return (
     <div
+      ref={rootRef}
       data-tauri-drag-region
-      onWheel={handleWheel}
       style={{ opacity }}
       className="group relative flex h-full w-full cursor-move items-center justify-center overflow-hidden bg-transparent"
     >

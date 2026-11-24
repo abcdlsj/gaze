@@ -4,9 +4,14 @@ import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import {
   computeLayout,
   exportCompositePng,
+  getContrastingTextColor,
   hitTestAnnotation,
+  hitTestHandle,
+  hitTestSingleAnnotation,
   isLightHexColor,
+  normalizeAnnotation,
   renderComposite,
+  resizeAnnotationByHandle,
   translateAnnotation,
 } from "../lib/canvas-render";
 import {
@@ -26,6 +31,10 @@ import type {
   BackdropConfig,
   EditorTool,
   Point,
+  RedactMode,
+  ResizeHandleId,
+  ShapeFillStyle,
+  TextStyle,
 } from "../types";
 import { EditorToolbar } from "../components/editor/EditorToolbar";
 import { ToolOptionsBar } from "../components/editor/ToolOptionsBar";
@@ -46,6 +55,22 @@ interface CropRect {
   y: number;
   w: number;
   h: number;
+}
+
+type CropEdge = "move" | "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
+
+interface HistoryEntry {
+  annotations: Annotation[];
+  sourceCanvas: HTMLCanvasElement;
+  imgSize: { w: number; h: number };
+}
+
+interface TextDraftState {
+  sessionId: number;
+  editingId: string | null;
+  x: number;
+  y: number;
+  value: string;
 }
 
 export function EditorWindow({ captureId }: { captureId: string }) {
@@ -81,35 +106,42 @@ export function EditorWindow({ captureId }: { captureId: string }) {
   // Tool state
   const [activeTool, setActiveTool] = useState<EditorTool>("select");
   const [color, setColor] = useState<string>("#EF4444");
+  const [blackoutColor, setBlackoutColor] = useState<string>("#18181B");
   const [strokeWidth, setStrokeWidth] = useState<number>(3);
   const [fontSize, setFontSize] = useState<number>(16);
+  const [textStyle, setTextStyle] = useState<TextStyle>("plain");
   const [blurStrength, setBlurStrength] = useState<number>(12);
-  const [filled, setFilled] = useState<boolean>(false);
+  const [spotlightOpacity, setSpotlightOpacity] = useState<number>(0.52);
+  const [shapeFillStyle, setShapeFillStyle] =
+    useState<ShapeFillStyle>("outline");
   const [highlighter, setHighlighter] = useState<boolean>(false);
+  const [counterRadius, setCounterRadius] = useState<number>(14);
+  const [nextCounterNum, setNextCounterNum] = useState<number>(1);
 
   const [backdrop, setBackdrop] = useState<BackdropConfig>({
     enabled: false,
-    padding: 48,
+    padding: 36,
     cornerRadius: 12,
     shadow: true,
     background: "linear-gradient(135deg, #0EA5E9, #2563EB, #6366F1)",
   });
 
-  // Annotations + Undo/Redo stacks
+  // Annotations + Unified Undo/Redo stacks (covers annotations, move, resize, crop, canvas resize)
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
-  const [undoStack, setUndoStack] = useState<Annotation[][]>([]);
-  const [redoStack, setRedoStack] = useState<Annotation[][]>([]);
+  const [undoStack, setUndoStack] = useState<HistoryEntry[]>([]);
+  const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draftAnn, setDraftAnn] = useState<Annotation | null>(null);
 
-  // Inline text editor
+  // Coalesce rapid property/nudge edits into one undo step
+  const propUndoGateRef = useRef<{ key: string; ts: number }>({
+    key: "",
+    ts: 0,
+  });
+
+  // Inline text editor (supports both creating new text & double-clicking existing text to edit)
   const textInputRef = useRef<HTMLTextAreaElement | null>(null);
-  const [textDraft, setTextDraft] = useState<{
-    id: number;
-    x: number;
-    y: number;
-    value: string;
-  } | null>(null);
+  const [textDraft, setTextDraft] = useState<TextDraftState | null>(null);
 
   useEffect(() => {
     if (!textDraft) return;
@@ -122,7 +154,7 @@ export function EditorWindow({ captureId }: { captureId: string }) {
       }
     });
     return () => cancelAnimationFrame(raf);
-  }, [textDraft?.id]);
+  }, [textDraft?.sessionId]);
 
   // Crop overlay state (in image pixel coordinates)
   const [cropRect, setCropRect] = useState<CropRect | null>(null);
@@ -133,13 +165,16 @@ export function EditorWindow({ captureId }: { captureId: string }) {
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const dragRef = useRef<{
-    kind: "pan" | "draw" | "move-ann" | "crop";
+    kind: "pan" | "draw" | "move-ann" | "resize-ann" | "crop";
     startClient: Point;
     startImg: Point;
     origPan?: Point;
     origAnn?: Annotation;
+    handleId?: ResizeHandleId;
+    preDragAnnotations?: Annotation[];
+    didMutate?: boolean;
     origCrop?: CropRect;
-    cropEdge?: "move" | "nw" | "ne" | "sw" | "se";
+    cropEdge?: CropEdge;
   } | null>(null);
 
   const showToast = useCallback((msg: string) => {
@@ -147,6 +182,11 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     toastTimerRef.current = setTimeout(() => setToast(null), 1300);
   }, []);
+
+  const selectedAnnotation = useMemo(
+    () => (selectedId ? annotations.find((a) => a.id === selectedId) ?? null : null),
+    [annotations, selectedId],
+  );
 
   // Load capture via zero-compression raw RGBA IPC (instant paint, no PNG decode lag)
   useEffect(() => {
@@ -219,8 +259,8 @@ export function EditorWindow({ captureId }: { captureId: string }) {
   }, [captureId]);
 
   const layout = useMemo(
-    () => computeLayout(imgSize.w, imgSize.h, backdrop),
-    [imgSize, backdrop],
+    () => computeLayout(imgSize.w, imgSize.h, backdrop, scaleFactor),
+    [imgSize, backdrop, scaleFactor],
   );
 
   const displayedAnnotations = useMemo(
@@ -228,7 +268,7 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     [annotations, draftAnn],
   );
 
-  // Redraw composite canvas whenever image, backdrop, annotations, or selection changes
+  // Redraw composite canvas whenever image, backdrop, annotations, zoom, or selection changes
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !sourceCanvas) return;
@@ -246,10 +286,15 @@ export function EditorWindow({ captureId }: { captureId: string }) {
       backdrop,
       displayedAnnotations,
       selectedId,
+      {
+        zoom,
+        draftId: draftAnn?.id ?? null,
+        editingTextId: textDraft?.editingId ?? null,
+      },
     );
 
     // Refresh CPU pixel cache only when idle (not mid-stroke) so dragging stays 120fps
-    if (!draftAnn) {
+    if (!draftAnn && !dragRef.current) {
       try {
         const snap = ctx.getImageData(0, 0, canvas.width, canvas.height);
         compositePixelsRef.current = {
@@ -263,7 +308,6 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     }
 
     // Reveal the hidden editor window only after the first composite frame is painted
-    // so there is zero white window flash after idle.
     if (!revealedRef.current) {
       revealedRef.current = true;
       setTimeout(() => {
@@ -279,34 +323,76 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     selectedId,
     layout,
     draftAnn,
+    zoom,
+    textDraft?.editingId,
   ]);
+
+  const pushHistoryEntry = useCallback(
+    (entry: HistoryEntry) => {
+      setUndoStack((u) => [...u.slice(-49), entry]);
+      setRedoStack([]);
+    },
+    [],
+  );
 
   const commitAnnotations = useCallback(
     (next: Annotation[]) => {
-      setUndoStack((u) => [...u.slice(-39), annotations]);
-      setRedoStack([]);
+      if (sourceCanvas) {
+        pushHistoryEntry({ annotations, sourceCanvas, imgSize });
+      }
       setAnnotations(next);
     },
-    [annotations],
+    [annotations, sourceCanvas, imgSize, pushHistoryEntry],
+  );
+
+  // Patch selected annotation live with coalesced undo (prevents slider drags spamming history)
+  const patchSelectedAnnotation = useCallback(
+    (
+      gateKey: string,
+      updater: (ann: Annotation) => Annotation,
+    ) => {
+      if (!selectedId || !sourceCanvas || textDraft) return;
+      const now = Date.now();
+      const fullKey = `${selectedId}:${gateKey}`;
+      if (
+        propUndoGateRef.current.key !== fullKey ||
+        now - propUndoGateRef.current.ts > 500
+      ) {
+        pushHistoryEntry({ annotations, sourceCanvas, imgSize });
+      }
+      propUndoGateRef.current = { key: fullKey, ts: now };
+      setAnnotations((prev) =>
+        prev.map((a) => (a.id === selectedId ? updater(a) : a)),
+      );
+    },
+    [selectedId, sourceCanvas, textDraft, annotations, imgSize, pushHistoryEntry],
   );
 
   const handleUndo = useCallback(() => {
-    if (undoStack.length === 0) return;
+    if (undoStack.length === 0 || !sourceCanvas) return;
     const prev = undoStack[undoStack.length - 1];
     setUndoStack((u) => u.slice(0, -1));
-    setRedoStack((r) => [...r, annotations]);
-    setAnnotations(prev);
+    setRedoStack((r) => [...r, { annotations, sourceCanvas, imgSize }]);
+    setAnnotations(prev.annotations);
+    setSourceCanvas(prev.sourceCanvas);
+    setImgSize(prev.imgSize);
     setSelectedId(null);
-  }, [undoStack, annotations]);
+    setTextDraft(null);
+    setCropRect(null);
+  }, [undoStack, annotations, sourceCanvas, imgSize]);
 
   const handleRedo = useCallback(() => {
-    if (redoStack.length === 0) return;
+    if (redoStack.length === 0 || !sourceCanvas) return;
     const next = redoStack[redoStack.length - 1];
     setRedoStack((r) => r.slice(0, -1));
-    setUndoStack((u) => [...u, annotations]);
-    setAnnotations(next);
+    setUndoStack((u) => [...u, { annotations, sourceCanvas, imgSize }]);
+    setAnnotations(next.annotations);
+    setSourceCanvas(next.sourceCanvas);
+    setImgSize(next.imgSize);
     setSelectedId(null);
-  }, [redoStack, annotations]);
+    setTextDraft(null);
+    setCropRect(null);
+  }, [redoStack, annotations, sourceCanvas, imgSize]);
 
   const handleZoomFit = useCallback(() => {
     const vp = viewportRef.current;
@@ -321,10 +407,54 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     setPan({ x: 0, y: 0 });
   }, [layout, scaleFactor]);
 
+  const commitTextDraft = useCallback(() => {
+    if (!textDraft) return;
+    const trimmed = textDraft.value.trim();
+    if (textDraft.editingId) {
+      if (trimmed) {
+        commitAnnotations(
+          annotations.map((a) =>
+            a.id === textDraft.editingId && a.type === "text"
+              ? { ...a, text: textDraft.value, fontSize, color, textStyle }
+              : a,
+          ),
+        );
+        setSelectedId(textDraft.editingId);
+      } else {
+        commitAnnotations(
+          annotations.filter((a) => a.id !== textDraft.editingId),
+        );
+        setSelectedId(null);
+      }
+    } else if (trimmed) {
+      const id = crypto.randomUUID();
+      const ann: Annotation = {
+        id,
+        type: "text",
+        x: textDraft.x,
+        y: textDraft.y,
+        text: textDraft.value,
+        fontSize,
+        textStyle,
+        color,
+        strokeWidth,
+      };
+      commitAnnotations([...annotations, ann]);
+      setSelectedId(id);
+    }
+    setTextDraft(null);
+  }, [textDraft, annotations, fontSize, color, textStyle, strokeWidth, commitAnnotations]);
+
   const selectTool = useCallback(
     (tool: EditorTool) => {
-      setTextDraft(null);
+      if (textDraft) {
+        commitTextDraft();
+      }
       setActiveTool(tool);
+      // Clear selection when switching to a different tool so you don't accidentally drag an old item
+      if (tool !== "select") {
+        setSelectedId(null);
+      }
       if (tool === "crop") {
         setSelectedId(null);
         setCropRect({ x: 0, y: 0, w: imgSize.w, h: imgSize.h });
@@ -335,8 +465,183 @@ export function EditorWindow({ captureId }: { captureId: string }) {
         setBackdrop((b) => ({ ...b, enabled: true }));
       }
     },
-    [imgSize, backdrop.enabled],
+    [imgSize, backdrop.enabled, textDraft, commitTextDraft],
   );
+
+  // Contextual property handlers: update both active tool defaults AND selected annotation live
+  const handleColorChange = useCallback(
+    (hex: string) => {
+      setColor(hex);
+      if (selectedAnnotation && selectedAnnotation.type !== "blackout") {
+        patchSelectedAnnotation("color", (a) => ({ ...a, color: hex }));
+      }
+    },
+    [selectedAnnotation, patchSelectedAnnotation],
+  );
+
+  const handleBlackoutColorChange = useCallback(
+    (hex: string) => {
+      setBlackoutColor(hex);
+      if (selectedAnnotation?.type === "blackout") {
+        patchSelectedAnnotation("blackout-color", (a) => ({
+          ...a,
+          color: hex,
+        }));
+      }
+    },
+    [selectedAnnotation, patchSelectedAnnotation],
+  );
+
+  const handleStrokeWidthChange = useCallback(
+    (w: number) => {
+      setStrokeWidth(w);
+      if (selectedAnnotation) {
+        patchSelectedAnnotation("stroke", (a) => ({ ...a, strokeWidth: w }));
+      }
+    },
+    [selectedAnnotation, patchSelectedAnnotation],
+  );
+
+  const handleFontSizeChange = useCallback(
+    (s: number) => {
+      setFontSize(s);
+      if (selectedAnnotation?.type === "text") {
+        patchSelectedAnnotation("fontSize", (a) =>
+          a.type === "text" ? { ...a, fontSize: s } : a,
+        );
+      }
+    },
+    [selectedAnnotation, patchSelectedAnnotation],
+  );
+
+  const handleTextStyleChange = useCallback(
+    (style: TextStyle) => {
+      setTextStyle(style);
+      if (selectedAnnotation?.type === "text") {
+        patchSelectedAnnotation("textStyle", (a) =>
+          a.type === "text" ? { ...a, textStyle: style } : a,
+        );
+      }
+    },
+    [selectedAnnotation, patchSelectedAnnotation],
+  );
+
+  const handleBlurStrengthChange = useCallback(
+    (s: number) => {
+      setBlurStrength(s);
+      if (
+        selectedAnnotation &&
+        (selectedAnnotation.type === "blur" ||
+          selectedAnnotation.type === "pixelate")
+      ) {
+        patchSelectedAnnotation("strength", (a) =>
+          a.type === "blur" || a.type === "pixelate" ? { ...a, strength: s } : a,
+        );
+      }
+    },
+    [selectedAnnotation, patchSelectedAnnotation],
+  );
+
+  const handleSpotlightOpacityChange = useCallback(
+    (opacity: number) => {
+      setSpotlightOpacity(opacity);
+      if (selectedAnnotation?.type === "spotlight") {
+        patchSelectedAnnotation("spotlight-opacity", (a) =>
+          a.type === "spotlight" ? { ...a, opacity } : a,
+        );
+      }
+    },
+    [selectedAnnotation, patchSelectedAnnotation],
+  );
+
+  const handleShapeFillStyleChange = useCallback(
+    (fillStyle: ShapeFillStyle) => {
+      setShapeFillStyle(fillStyle);
+      if (
+        selectedAnnotation &&
+        (selectedAnnotation.type === "rect" ||
+          selectedAnnotation.type === "ellipse")
+      ) {
+        patchSelectedAnnotation("fillStyle", (a) =>
+          a.type === "rect" || a.type === "ellipse"
+            ? { ...a, fillStyle, filled: fillStyle !== "outline" }
+            : a,
+        );
+      }
+    },
+    [selectedAnnotation, patchSelectedAnnotation],
+  );
+
+  const handleHighlighterChange = useCallback(
+    (hl: boolean) => {
+      setHighlighter(hl);
+      if (selectedAnnotation?.type === "pen") {
+        patchSelectedAnnotation("highlighter", (a) =>
+          a.type === "pen" ? { ...a, highlighter: hl } : a,
+        );
+      }
+    },
+    [selectedAnnotation, patchSelectedAnnotation],
+  );
+
+  const handleCounterRadiusChange = useCallback(
+    (r: number) => {
+      setCounterRadius(r);
+      if (selectedAnnotation?.type === "counter") {
+        patchSelectedAnnotation("counterRadius", (a) =>
+          a.type === "counter" ? { ...a, radius: r } : a,
+        );
+      }
+    },
+    [selectedAnnotation, patchSelectedAnnotation],
+  );
+
+  const handleSelectRedactMode = useCallback(
+    (mode: RedactMode) => {
+      if (
+        selectedAnnotation &&
+        (selectedAnnotation.type === "blur" ||
+          selectedAnnotation.type === "pixelate" ||
+          selectedAnnotation.type === "blackout")
+      ) {
+        patchSelectedAnnotation("redact-mode", (a) =>
+          a.type === "blur" || a.type === "pixelate" || a.type === "blackout"
+            ? {
+                ...a,
+                type: mode,
+                color: mode === "blackout" ? blackoutColor : a.color,
+              }
+            : a,
+        );
+      }
+      if (
+        activeTool === "blur" ||
+        activeTool === "pixelate" ||
+        activeTool === "blackout"
+      ) {
+        setActiveTool(mode);
+      }
+    },
+    [selectedAnnotation, activeTool, blackoutColor, patchSelectedAnnotation],
+  );
+
+  const handleDuplicateSelected = useCallback(() => {
+    if (!selectedAnnotation) return;
+    const offset = 12 * scaleFactor;
+    const cloned = translateAnnotation(
+      { ...selectedAnnotation, id: crypto.randomUUID() },
+      offset,
+      offset,
+    );
+    commitAnnotations([...annotations, cloned]);
+    setSelectedId(cloned.id);
+  }, [selectedAnnotation, scaleFactor, annotations, commitAnnotations]);
+
+  const handleDeleteSelected = useCallback(() => {
+    if (!selectedId) return;
+    commitAnnotations(annotations.filter((a) => a.id !== selectedId));
+    setSelectedId(null);
+  }, [selectedId, annotations, commitAnnotations]);
 
   const applyCrop = useCallback(() => {
     if (!cropRect || !sourceCanvas) return;
@@ -344,6 +649,8 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     const ry = Math.max(0, Math.round(cropRect.y));
     const rw = Math.max(8, Math.min(imgSize.w - rx, Math.round(cropRect.w)));
     const rh = Math.max(8, Math.min(imgSize.h - ry, Math.round(cropRect.h)));
+
+    pushHistoryEntry({ annotations, sourceCanvas, imgSize });
 
     const nextCanvas = document.createElement("canvas");
     nextCanvas.width = rw;
@@ -360,11 +667,21 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     showToast(
       `Cropped to ${Math.round(rw / scaleFactor)}×${Math.round(rh / scaleFactor)}pt`,
     );
-  }, [cropRect, sourceCanvas, imgSize, scaleFactor, showToast]);
+  }, [
+    cropRect,
+    sourceCanvas,
+    imgSize,
+    annotations,
+    scaleFactor,
+    pushHistoryEntry,
+    showToast,
+  ]);
 
   const handleResize = useCallback(
     (newW: number, newH: number) => {
       if (!sourceCanvas) return;
+      pushHistoryEntry({ annotations, sourceCanvas, imgSize });
+
       const sx = newW / imgSize.w;
       const sy = newH / imgSize.h;
       const nextCanvas = document.createElement("canvas");
@@ -384,6 +701,8 @@ export function EditorWindow({ captureId }: { captureId: string }) {
             case "ellipse":
             case "blur":
             case "pixelate":
+            case "blackout":
+            case "spotlight":
               return {
                 ...a,
                 x: a.x * sx,
@@ -414,7 +733,7 @@ export function EditorWindow({ captureId }: { captureId: string }) {
         `Resized to ${Math.round(newW / scaleFactor)}×${Math.round(newH / scaleFactor)}pt`,
       );
     },
-    [sourceCanvas, imgSize, scaleFactor, showToast],
+    [sourceCanvas, annotations, imgSize, scaleFactor, pushHistoryEntry, showToast],
   );
 
   const buildExportBytes = useCallback(async () => {
@@ -493,8 +812,11 @@ export function EditorWindow({ captureId }: { captureId: string }) {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (textDraft || resizeOpen) return;
+      const activeTag = (document.activeElement as HTMLElement | null)?.tagName;
+      if (activeTag === "INPUT" || activeTag === "TEXTAREA") return;
 
       if (e.code === "Space") {
+        e.preventDefault();
         setSpacePressed(true);
         return;
       }
@@ -515,20 +837,57 @@ export function EditorWindow({ captureId }: { captureId: string }) {
           setSelectedId(null);
           return;
         }
+        if (activeTool !== "select") {
+          setActiveTool("select");
+          return;
+        }
         void getCurrentWindow().close();
         return;
       }
 
-      if (e.key === "Enter" && activeTool === "crop") {
-        e.preventDefault();
-        applyCrop();
-        return;
+      if (e.key === "Enter") {
+        if (activeTool === "crop") {
+          e.preventDefault();
+          applyCrop();
+          return;
+        }
+        if (selectedAnnotation?.type === "text") {
+          e.preventDefault();
+          setColor(selectedAnnotation.color);
+          setFontSize(selectedAnnotation.fontSize);
+          setTextStyle(selectedAnnotation.textStyle ?? "plain");
+          setTextDraft({
+            sessionId: Date.now(),
+            editingId: selectedAnnotation.id,
+            x: selectedAnnotation.x,
+            y: selectedAnnotation.y,
+            value: selectedAnnotation.text,
+          });
+          return;
+        }
       }
 
       if ((e.key === "Backspace" || e.key === "Delete") && selectedId) {
         e.preventDefault();
-        commitAnnotations(annotations.filter((a) => a.id !== selectedId));
-        setSelectedId(null);
+        handleDeleteSelected();
+        return;
+      }
+
+      // Arrow-key precision nudging for selected annotation (1pt, or 10pt with Shift)
+      if (
+        selectedId &&
+        (e.key === "ArrowUp" ||
+          e.key === "ArrowDown" ||
+          e.key === "ArrowLeft" ||
+          e.key === "ArrowRight")
+      ) {
+        e.preventDefault();
+        const step = (e.shiftKey ? 10 : 1) * scaleFactor;
+        const dx =
+          e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+        const dy =
+          e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
+        patchSelectedAnnotation("nudge", (a) => translateAnnotation(a, dx, dy));
         return;
       }
 
@@ -538,6 +897,11 @@ export function EditorWindow({ captureId }: { captureId: string }) {
       if (mod && k === "c") {
         e.preventDefault();
         void handleCopy();
+        return;
+      }
+      if (mod && k === "d" && selectedId) {
+        e.preventDefault();
+        handleDuplicateSelected();
         return;
       }
       if (mod && k === "s") {
@@ -574,6 +938,39 @@ export function EditorWindow({ captureId }: { captureId: string }) {
         return;
       }
 
+      // Quick [ / ] size adjustment (like CleanShot X / Photoshop / Snipaste)
+      if (!mod && !e.altKey && (e.key === "[" || e.key === "]")) {
+        const delta = e.key === "]" ? 1 : -1;
+        const ctxKind = selectedAnnotation ? selectedAnnotation.type : activeTool;
+        if (ctxKind === "blur" || ctxKind === "pixelate") {
+          const cur =
+            selectedAnnotation &&
+            (selectedAnnotation.type === "blur" ||
+              selectedAnnotation.type === "pixelate")
+              ? selectedAnnotation.strength
+              : blurStrength;
+          handleBlurStrengthChange(Math.max(4, Math.min(28, cur + delta * 2)));
+        } else if (ctxKind === "text") {
+          const cur =
+            selectedAnnotation?.type === "text"
+              ? selectedAnnotation.fontSize
+              : fontSize;
+          handleFontSizeChange(Math.max(12, Math.min(48, cur + delta * 2)));
+        } else if (
+          ctxKind === "arrow" ||
+          ctxKind === "line" ||
+          ctxKind === "rect" ||
+          ctxKind === "ellipse" ||
+          ctxKind === "pen"
+        ) {
+          const cur = selectedAnnotation
+            ? selectedAnnotation.strokeWidth
+            : strokeWidth;
+          handleStrokeWidthChange(Math.max(1, Math.min(12, cur + delta)));
+        }
+        return;
+      }
+
       if (!mod && !e.altKey) {
         const shortcuts: Record<string, EditorTool> = {
           v: "select",
@@ -587,6 +984,8 @@ export function EditorWindow({ captureId }: { captureId: string }) {
           p: "pen",
           b: "blur",
           x: "pixelate",
+          k: "blackout",
+          h: "spotlight",
           n: "counter",
           c: "crop",
         };
@@ -611,15 +1010,24 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     resizeOpen,
     activeTool,
     selectedId,
-    annotations,
+    selectedAnnotation,
+    scaleFactor,
+    blurStrength,
+    fontSize,
+    strokeWidth,
     applyCrop,
-    commitAnnotations,
     handleCopy,
     handleCopyHex,
+    handleDeleteSelected,
+    handleDuplicateSelected,
+    handleBlurStrengthChange,
+    handleFontSizeChange,
+    handleStrokeWidthChange,
     handleRedo,
     handleSave,
     handleSaveAs,
     handleUndo,
+    patchSelectedAnnotation,
     selectTool,
   ]);
 
@@ -673,7 +1081,11 @@ export function EditorWindow({ captureId }: { captureId: string }) {
       ),
     );
     const idx = (py * cache.w + px) * 4;
-    const hex = rgbToHex(cache.data[idx], cache.data[idx + 1], cache.data[idx + 2]);
+    const hex = rgbToHex(
+      cache.data[idx],
+      cache.data[idx + 1],
+      cache.data[idx + 2],
+    );
     if (hex !== hoverHexRef.current) {
       hoverHexRef.current = hex;
       if (colorDotRef.current) {
@@ -685,14 +1097,85 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     }
   }, []);
 
-  const handleCanvasMouseDown = (e: React.MouseEvent) => {
+  // Zero-rerender dynamic cursor feedback based on handle/annotation hover
+  const updateHoverCursor = useCallback(
+    (pt: Point | null) => {
+      const vp = viewportRef.current;
+      if (!vp) return;
+      if (spacePressed) {
+        vp.style.cursor = dragRef.current?.kind === "pan" ? "grabbing" : "grab";
+        return;
+      }
+      if (dragRef.current) return;
+      if (pt) {
+        if (selectedAnnotation) {
+          const handle = hitTestHandle(selectedAnnotation, pt, scaleFactor, zoom);
+          if (handle) {
+            vp.style.cursor = handle.cursor;
+            return;
+          }
+          if (
+            activeTool !== "pen" &&
+            activeTool !== "crop" &&
+            hitTestSingleAnnotation(selectedAnnotation, pt, scaleFactor, zoom)
+          ) {
+            vp.style.cursor = "move";
+            return;
+          }
+        }
+        if (activeTool === "select" || activeTool === "frame") {
+          const hit = hitTestAnnotation(annotations, pt, scaleFactor, zoom);
+          vp.style.cursor = hit ? "move" : "default";
+          return;
+        }
+      }
+      vp.style.cursor =
+        activeTool === "select" || activeTool === "frame"
+          ? "default"
+          : activeTool === "text"
+            ? "text"
+            : "crosshair";
+    },
+    [spacePressed, selectedAnnotation, activeTool, annotations, scaleFactor, zoom],
+  );
+
+  // Sync cursor whenever tool or spacebar changes
+  useEffect(() => {
+    updateHoverCursor(null);
+  }, [updateHoverCursor]);
+
+  const handleViewportDoubleClick = (e: React.MouseEvent) => {
+    if (activeTool === "crop" || spacePressed) return;
+    const pt = clientToImagePoint(e.clientX, e.clientY);
+    if (!pt) return;
+    const hit = hitTestAnnotation(annotations, pt, scaleFactor, zoom);
+    if (hit && hit.type === "text") {
+      e.preventDefault();
+      e.stopPropagation();
+      setSelectedId(hit.id);
+      setColor(hit.color);
+      setFontSize(hit.fontSize);
+      setTextStyle(hit.textStyle ?? "plain");
+      setTextDraft({
+        sessionId: Date.now(),
+        editingId: hit.id,
+        x: hit.x,
+        y: hit.y,
+        value: hit.text,
+      });
+    }
+  };
+
+  const handleViewportMouseDown = (e: React.MouseEvent) => {
     if (e.button === 1 || spacePressed) {
+      e.preventDefault();
       dragRef.current = {
         kind: "pan",
         startClient: { x: e.clientX, y: e.clientY },
         startImg: { x: 0, y: 0 },
         origPan: { ...pan },
       };
+      if (viewportRef.current) viewportRef.current.style.cursor = "grabbing";
       return;
     }
 
@@ -705,58 +1188,141 @@ export function EditorWindow({ captureId }: { captureId: string }) {
       return;
     }
 
-    if (activeTool === "text") {
-      // Prevent default so the canvas mousedown doesn't immediately blur the newly focused textarea.
+    // If inline text is currently active and user clicks canvas outside textarea, commit it
+    if (textDraft) {
       e.preventDefault();
-      e.stopPropagation();
-      if (textDraft && textDraft.value.trim()) {
-        const ann: Annotation = {
-          id: crypto.randomUUID(),
-          type: "text",
-          x: textDraft.x,
-          y: textDraft.y,
-          text: textDraft.value,
-          fontSize,
-          color,
-          strokeWidth,
+      commitTextDraft();
+      if (activeTool !== "text") return;
+    }
+
+    // 1. Direct handle manipulation on currently selected annotation (works in ANY drawing tool!)
+    if (selectedAnnotation) {
+      const handle = hitTestHandle(selectedAnnotation, pt, scaleFactor, zoom);
+      if (handle) {
+        dragRef.current = {
+          kind: "resize-ann",
+          startClient: { x: e.clientX, y: e.clientY },
+          startImg: pt,
+          origAnn: selectedAnnotation,
+          handleId: handle.id,
+          preDragAnnotations: annotations,
+          didMutate: false,
         };
-        commitAnnotations([...annotations, ann]);
+        return;
       }
-      setTextDraft({ id: Date.now(), x: pt.x, y: pt.y, value: "" });
-      return;
-    }
 
-    if (activeTool === "counter") {
-      const nextNum =
-        annotations.filter((a) => a.type === "counter").length + 1;
-      const ann: Annotation = {
-        id: crypto.randomUUID(),
-        type: "counter",
-        x: pt.x,
-        y: pt.y,
-        number: nextNum,
-        radius: 14,
-        color,
-        strokeWidth,
-      };
-      commitAnnotations([...annotations, ann]);
-      return;
-    }
-
-    if (activeTool === "select" || activeTool === "frame") {
-      const hit = hitTestAnnotation(annotations, pt, scaleFactor);
-      setSelectedId(hit?.id ?? null);
-      if (hit) {
+      // 2. Direct move of the currently selected annotation (except pen so rapid sketching isn't blocked)
+      if (
+        activeTool !== "pen" &&
+        hitTestSingleAnnotation(selectedAnnotation, pt, scaleFactor, zoom)
+      ) {
+        let targetAnn = selectedAnnotation;
+        let preDrag = annotations;
+        // Alt+drag duplicates the selected annotation in-place
+        if (e.altKey) {
+          const cloned = { ...selectedAnnotation, id: crypto.randomUUID() };
+          preDrag = annotations;
+          setAnnotations((prev) => [...prev, cloned]);
+          setSelectedId(cloned.id);
+          targetAnn = cloned;
+        }
         dragRef.current = {
           kind: "move-ann",
           startClient: { x: e.clientX, y: e.clientY },
           startImg: pt,
-          origAnn: hit,
+          origAnn: targetAnn,
+          preDragAnnotations: preDrag,
+          didMutate: e.altKey,
+        };
+        return;
+      }
+    }
+
+    // 3. Select / Frame mode: pick any annotation under cursor
+    if (activeTool === "select" || activeTool === "frame") {
+      const hit = hitTestAnnotation(annotations, pt, scaleFactor, zoom);
+      setSelectedId(hit?.id ?? null);
+      if (hit) {
+        let targetAnn = hit;
+        if (e.altKey) {
+          const cloned = { ...hit, id: crypto.randomUUID() };
+          setAnnotations((prev) => [...prev, cloned]);
+          setSelectedId(cloned.id);
+          targetAnn = cloned;
+        }
+        dragRef.current = {
+          kind: "move-ann",
+          startClient: { x: e.clientX, y: e.clientY },
+          startImg: pt,
+          origAnn: targetAnn,
+          preDragAnnotations: annotations,
+          didMutate: e.altKey,
         };
       }
       return;
     }
 
+    // 4. Text tool: click existing text to select/move, or click empty space to type new text
+    if (activeTool === "text") {
+      e.preventDefault();
+      e.stopPropagation();
+      const existing = hitTestAnnotation(annotations, pt, scaleFactor, zoom);
+      if (existing?.type === "text") {
+        setSelectedId(existing.id);
+        dragRef.current = {
+          kind: "move-ann",
+          startClient: { x: e.clientX, y: e.clientY },
+          startImg: pt,
+          origAnn: existing,
+          preDragAnnotations: annotations,
+          didMutate: false,
+        };
+        return;
+      }
+      setSelectedId(null);
+      setTextDraft({
+        sessionId: Date.now(),
+        editingId: null,
+        x: pt.x,
+        y: pt.y,
+        value: "",
+      });
+      return;
+    }
+
+    // 5. Counter tool: click existing counter to move, or place next numbered badge
+    if (activeTool === "counter") {
+      const existing = hitTestAnnotation(annotations, pt, scaleFactor, zoom);
+      if (existing?.type === "counter") {
+        setSelectedId(existing.id);
+        dragRef.current = {
+          kind: "move-ann",
+          startClient: { x: e.clientX, y: e.clientY },
+          startImg: pt,
+          origAnn: existing,
+          preDragAnnotations: annotations,
+          didMutate: false,
+        };
+        return;
+      }
+      const id = crypto.randomUUID();
+      const ann: Annotation = {
+        id,
+        type: "counter",
+        x: pt.x,
+        y: pt.y,
+        number: nextCounterNum,
+        radius: counterRadius,
+        color,
+        strokeWidth,
+      };
+      commitAnnotations([...annotations, ann]);
+      setNextCounterNum((n) => n + 1);
+      setSelectedId(id);
+      return;
+    }
+
+    // 6. Start drawing a new annotation
     const id = crypto.randomUUID();
     let initial: Annotation | null = null;
     switch (activeTool) {
@@ -790,13 +1356,15 @@ export function EditorWindow({ captureId }: { captureId: string }) {
           y: pt.y,
           width: 0,
           height: 0,
-          filled,
+          filled: shapeFillStyle !== "outline",
+          fillStyle: shapeFillStyle,
           color,
           strokeWidth,
         };
         break;
       case "blur":
       case "pixelate":
+      case "blackout":
         initial = {
           id,
           type: activeTool,
@@ -805,6 +1373,19 @@ export function EditorWindow({ captureId }: { captureId: string }) {
           width: 0,
           height: 0,
           strength: blurStrength,
+          color: activeTool === "blackout" ? blackoutColor : color,
+          strokeWidth,
+        };
+        break;
+      case "spotlight":
+        initial = {
+          id,
+          type: "spotlight",
+          x: pt.x,
+          y: pt.y,
+          width: 0,
+          height: 0,
+          opacity: spotlightOpacity,
           color,
           strokeWidth,
         };
@@ -836,7 +1417,12 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     sampleColorAtClient(e.clientX, e.clientY);
 
     const drag = dragRef.current;
-    if (!drag) return;
+    const pt = clientToImagePoint(e.clientX, e.clientY);
+
+    if (!drag) {
+      updateHoverCursor(pt);
+      return;
+    }
 
     if (drag.kind === "pan" && drag.origPan) {
       setPan({
@@ -846,7 +1432,6 @@ export function EditorWindow({ captureId }: { captureId: string }) {
       return;
     }
 
-    const pt = clientToImagePoint(e.clientX, e.clientY);
     if (!pt) return;
 
     if (drag.kind === "crop" && drag.origCrop && drag.cropEdge) {
@@ -883,9 +1468,26 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     if (drag.kind === "move-ann" && drag.origAnn) {
       const dx = pt.x - drag.startImg.x;
       const dy = pt.y - drag.startImg.y;
+      if (Math.hypot(dx, dy) > 0.5) {
+        drag.didMutate = true;
+      }
       const moved = translateAnnotation(drag.origAnn, dx, dy);
       setAnnotations((prev) =>
         prev.map((a) => (a.id === moved.id ? moved : a)),
+      );
+      return;
+    }
+
+    if (drag.kind === "resize-ann" && drag.origAnn && drag.handleId) {
+      drag.didMutate = true;
+      const resized = resizeAnnotationByHandle(
+        drag.origAnn,
+        drag.handleId,
+        pt,
+        e.shiftKey,
+      );
+      setAnnotations((prev) =>
+        prev.map((a) => (a.id === resized.id ? resized : a)),
       );
       return;
     }
@@ -915,13 +1517,57 @@ export function EditorWindow({ captureId }: { captureId: string }) {
           case "ellipse":
           case "blur":
           case "pixelate":
+          case "blackout":
+          case "spotlight": {
+            let dx = pt.x - drag.startImg.x;
+            let dy = pt.y - drag.startImg.y;
+            if (e.shiftKey) {
+              const side = Math.max(Math.abs(dx), Math.abs(dy));
+              dx = Math.sign(dx || 1) * side;
+              dy = Math.sign(dy || 1) * side;
+            }
+            if (e.altKey) {
+              return {
+                ...curr,
+                x: drag.startImg.x - dx,
+                y: drag.startImg.y - dy,
+                width: dx * 2,
+                height: dy * 2,
+              };
+            }
             return {
               ...curr,
-              width: pt.x - drag.startImg.x,
-              height: pt.y - drag.startImg.y,
+              x: drag.startImg.x,
+              y: drag.startImg.y,
+              width: dx,
+              height: dy,
             };
-          case "pen":
+          }
+          case "pen": {
+            // Shift draws a straight horizontal/vertical/45° line (ideal for highlighting text lines!)
+            if (e.shiftKey) {
+              const dx = pt.x - drag.startImg.x;
+              const dy = pt.y - drag.startImg.y;
+              const angle =
+                Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
+              const dist = Math.hypot(dx, dy);
+              return {
+                ...curr,
+                points: [
+                  drag.startImg,
+                  {
+                    x: drag.startImg.x + Math.cos(angle) * dist,
+                    y: drag.startImg.y + Math.sin(angle) * dist,
+                  },
+                ],
+              };
+            }
+            const last = curr.points[curr.points.length - 1];
+            if (last && Math.hypot(pt.x - last.x, pt.y - last.y) < 1.5) {
+              return curr;
+            }
             return { ...curr, points: [...curr.points, pt] };
+          }
           default:
             return curr;
         }
@@ -934,65 +1580,86 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     dragRef.current = null;
     if (!drag) return;
 
+    if (drag.kind === "pan") {
+      updateHoverCursor(null);
+      return;
+    }
+
+    if (
+      (drag.kind === "move-ann" || drag.kind === "resize-ann") &&
+      drag.didMutate &&
+      drag.preDragAnnotations &&
+      sourceCanvas
+    ) {
+      pushHistoryEntry({
+        annotations: drag.preDragAnnotations,
+        sourceCanvas,
+        imgSize,
+      });
+      return;
+    }
+
     if (drag.kind === "draw" && draftAnn) {
+      const normalized = normalizeAnnotation(draftAnn);
       const meaningful =
-        draftAnn.type === "pen"
-          ? draftAnn.points.length > 2
-          : draftAnn.type === "arrow" ||
-              draftAnn.type === "line" ||
-              draftAnn.type === "ruler"
+        normalized.type === "pen"
+          ? normalized.points.length >= 2 &&
+            Math.hypot(
+              normalized.points[normalized.points.length - 1].x -
+                normalized.points[0].x,
+              normalized.points[normalized.points.length - 1].y -
+                normalized.points[0].y,
+            ) > 2
+          : normalized.type === "arrow" ||
+              normalized.type === "line" ||
+              normalized.type === "ruler"
             ? Math.hypot(
-                draftAnn.end.x - draftAnn.start.x,
-                draftAnn.end.y - draftAnn.start.y,
+                normalized.end.x - normalized.start.x,
+                normalized.end.y - normalized.start.y,
               ) > 4
-            : draftAnn.type === "rect" ||
-                draftAnn.type === "ellipse" ||
-                draftAnn.type === "blur" ||
-                draftAnn.type === "pixelate"
-              ? Math.abs(draftAnn.width) > 4 && Math.abs(draftAnn.height) > 4
+            : normalized.type === "rect" ||
+                normalized.type === "ellipse" ||
+                normalized.type === "blur" ||
+                normalized.type === "pixelate" ||
+                normalized.type === "blackout" ||
+                normalized.type === "spotlight"
+              ? Math.abs(normalized.width) > 4 &&
+                Math.abs(normalized.height) > 4
               : true;
 
       if (meaningful) {
-        commitAnnotations([...annotations, draftAnn]);
+        commitAnnotations([...annotations, normalized]);
+        // Auto-select newly created shape/arrow/redact so user can immediately adjust handles or style
+        // (keep Pen unselected so freehand sketching stays fluid)
+        if (normalized.type !== "pen") {
+          setSelectedId(normalized.id);
+        }
       }
       setDraftAnn(null);
     }
   };
 
-  const handleWheel = (e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      const factor = e.deltaY < 0 ? 1.1 : 0.9;
-      setZoom((z) =>
-        Math.max(0.15, Math.min(8, Number((z * factor).toFixed(2)))),
-      );
-    } else {
-      setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }));
-    }
-  };
+  // Native non-passive wheel listener so WKWebView allows preventDefault() on trackpad pinch-zoom
+  useEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp) return;
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const factor = e.deltaY < 0 ? 1.1 : 0.9;
+        setZoom((z) =>
+          Math.max(0.15, Math.min(8, Number((z * factor).toFixed(2)))),
+        );
+      } else {
+        e.preventDefault();
+        setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }));
+      }
+    };
+    vp.addEventListener("wheel", onWheel, { passive: false });
+    return () => vp.removeEventListener("wheel", onWheel);
+  }, []);
 
-  const commitTextDraft = () => {
-    if (!textDraft) return;
-    if (textDraft.value.trim()) {
-      const ann: Annotation = {
-        id: crypto.randomUUID(),
-        type: "text",
-        x: textDraft.x,
-        y: textDraft.y,
-        text: textDraft.value,
-        fontSize,
-        color,
-        strokeWidth,
-      };
-      commitAnnotations([...annotations, ann]);
-    }
-    setTextDraft(null);
-  };
-
-  const startCropDrag = (
-    edge: "move" | "nw" | "ne" | "sw" | "se",
-    e: React.MouseEvent,
-  ) => {
+  const startCropDrag = (edge: CropEdge, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!cropRect) return;
     const pt = clientToImagePoint(e.clientX, e.clientY);
@@ -1010,6 +1677,14 @@ export function EditorWindow({ captureId }: { captureId: string }) {
   const displayH = (layout.canvasHeight / scaleFactor) * zoom;
   const widthPt = Math.round(layout.canvasWidth / scaleFactor);
   const heightPt = Math.round(layout.canvasHeight / scaleFactor);
+  const cropSizePt = cropRect
+    ? {
+        w: Math.round(cropRect.w / scaleFactor),
+        h: Math.round(cropRect.h / scaleFactor),
+      }
+    : null;
+
+  const isBadgeDraft = textStyle === "badge";
 
   return (
     <div className="flex h-full w-full flex-col bg-white text-[#141416]">
@@ -1022,7 +1697,11 @@ export function EditorWindow({ captureId }: { captureId: string }) {
         onPin={() => void handlePin()}
         onUndo={handleUndo}
         onRedo={handleRedo}
-        onClearAnnotations={() => commitAnnotations([])}
+        onClearAnnotations={() => {
+          commitAnnotations([]);
+          setSelectedId(null);
+          setNextCounterNum(1);
+        }}
         onOpenPreferences={() => void openPreferencesWindow()}
         canUndo={undoStack.length > 0}
         canRedo={redoStack.length > 0}
@@ -1045,37 +1724,44 @@ export function EditorWindow({ captureId }: { captureId: string }) {
       {/* Airy Checkerboard Canvas Viewport */}
       <div
         ref={viewportRef}
+        onMouseDown={handleViewportMouseDown}
+        onDoubleClick={handleViewportDoubleClick}
         onMouseMove={handleViewportMouseMove}
         onMouseUp={handleViewportMouseUp}
         onMouseLeave={handleViewportMouseUp}
-        onWheel={handleWheel}
-        className={`checkerboard-bg relative flex flex-1 items-center justify-center overflow-hidden ${
-          spacePressed
-            ? "cursor-grab active:cursor-grabbing"
-            : activeTool === "select"
-              ? "cursor-default"
-              : activeTool === "text"
-                ? "cursor-text"
-                : "cursor-crosshair"
-        }`}
+        className="checkerboard-bg relative flex flex-1 select-none items-center justify-center overflow-hidden"
       >
         <ToolOptionsBar
-          activeTool={activeTool}
+          activeTool={textDraft ? "text" : activeTool}
+          selectedAnnotation={textDraft ? null : selectedAnnotation}
           color={color}
-          onColorChange={setColor}
+          onColorChange={handleColorChange}
+          blackoutColor={blackoutColor}
+          onBlackoutColorChange={handleBlackoutColorChange}
           strokeWidth={strokeWidth}
-          onStrokeWidthChange={setStrokeWidth}
+          onStrokeWidthChange={handleStrokeWidthChange}
           fontSize={fontSize}
-          onFontSizeChange={setFontSize}
+          onFontSizeChange={handleFontSizeChange}
+          textStyle={textStyle}
+          onTextStyleChange={handleTextStyleChange}
           blurStrength={blurStrength}
-          onBlurStrengthChange={setBlurStrength}
-          filled={filled}
-          onFilledChange={setFilled}
+          onBlurStrengthChange={handleBlurStrengthChange}
+          spotlightOpacity={spotlightOpacity}
+          onSpotlightOpacityChange={handleSpotlightOpacityChange}
+          shapeFillStyle={shapeFillStyle}
+          onShapeFillStyleChange={handleShapeFillStyleChange}
           highlighter={highlighter}
-          onHighlighterChange={setHighlighter}
+          onHighlighterChange={handleHighlighterChange}
+          counterRadius={counterRadius}
+          onCounterRadiusChange={handleCounterRadiusChange}
+          nextCounterNum={nextCounterNum}
+          onResetCounter={() => setNextCounterNum(1)}
           backdrop={backdrop}
           onBackdropChange={setBackdrop}
-          onSelectTool={selectTool}
+          onSelectRedactMode={handleSelectRedactMode}
+          onDuplicateSelected={handleDuplicateSelected}
+          onDeleteSelected={handleDeleteSelected}
+          cropSizePt={cropSizePt}
           onApplyCrop={applyCrop}
           onCancelCrop={() => {
             setCropRect(null);
@@ -1095,7 +1781,6 @@ export function EditorWindow({ captureId }: { captureId: string }) {
         >
           <canvas
             ref={canvasRef}
-            onMouseDown={handleCanvasMouseDown}
             style={{
               width: displayW,
               height: displayH,
@@ -1104,7 +1789,7 @@ export function EditorWindow({ captureId }: { captureId: string }) {
             className="block shadow-[0_1px_5px_rgba(0,0,0,0.08)]"
           />
 
-          {/* Inline transparent text box (WYSIWYG aligned with canvas text renderer) */}
+          {/* Inline transparent/badge text box (WYSIWYG aligned with canvas text renderer) */}
           {textDraft && (
             <textarea
               ref={textInputRef}
@@ -1112,10 +1797,17 @@ export function EditorWindow({ captureId }: { captureId: string }) {
               rows={Math.max(1, textDraft.value.split("\n").length)}
               value={textDraft.value}
               onMouseDown={(e) => e.stopPropagation()}
+              onDoubleClick={(e) => e.stopPropagation()}
               onChange={(e) =>
                 setTextDraft({ ...textDraft, value: e.target.value })
               }
-              onBlur={commitTextDraft}
+              onBlur={(e) => {
+                const next = e.relatedTarget as HTMLElement | null;
+                if (next && next.closest('[data-options-bar="true"]')) {
+                  return;
+                }
+                commitTextDraft();
+              }}
               onKeyDown={(e) => {
                 if (e.nativeEvent.isComposing || e.keyCode === 229) return;
                 if (e.key === "Escape") {
@@ -1129,19 +1821,28 @@ export function EditorWindow({ captureId }: { captureId: string }) {
               style={{
                 left: ((textDraft.x + layout.offsetX) / scaleFactor) * zoom - 2,
                 top: ((textDraft.y + layout.offsetY) / scaleFactor) * zoom - 1,
-                color,
-                caretColor: color,
+                color: isBadgeDraft ? getContrastingTextColor(color) : color,
+                backgroundColor: isBadgeDraft ? color : "transparent",
+                padding: isBadgeDraft
+                  ? `${Math.round(fontSize * zoom * 0.24)}px ${Math.round(fontSize * zoom * 0.45)}px`
+                  : "0px 2px",
+                borderRadius: isBadgeDraft
+                  ? `${Math.round(Math.min(8 * zoom, fontSize * zoom * 0.35))}px`
+                  : "3px",
+                caretColor: isBadgeDraft
+                  ? getContrastingTextColor(color)
+                  : color,
                 fontFamily:
                   '-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif',
                 fontSize: `${fontSize * zoom}px`,
                 lineHeight: 1.28,
-                textShadow: isLightHexColor(color)
-                  ? "0 0.75px 1.5px rgba(0, 0, 0, 0.42)"
-                  : "none",
+                textShadow:
+                  !isBadgeDraft && isLightHexColor(color)
+                    ? "0 0.75px 1.5px rgba(0, 0, 0, 0.42)"
+                    : "none",
                 width: `${Math.max(
                   6,
                   ...textDraft.value.split("\n").map((line) => {
-                    // CJK chars are ~2ch wide; ASCII chars ~1ch wide.
                     let units = 0;
                     for (const ch of line) {
                       units += ch.charCodeAt(0) > 127 ? 2 : 1.05;
@@ -1150,17 +1851,18 @@ export function EditorWindow({ captureId }: { captureId: string }) {
                   }),
                 )}ch`,
                 maxWidth: Math.max(
-                  120,
-                  displayW - ((textDraft.x + layout.offsetX) / scaleFactor) * zoom,
+                  140,
+                  displayW -
+                    ((textDraft.x + layout.offsetX) / scaleFactor) * zoom,
                 ),
                 userSelect: "text",
               }}
               placeholder="Type…"
-              className="absolute z-30 resize-none overflow-hidden rounded-[3px] border border-dashed border-[#007AFF]/70 bg-transparent px-0.5 py-0 font-semibold outline-none placeholder:text-current/55"
+              className="absolute z-30 resize-none overflow-hidden border border-dashed border-[#007AFF]/70 font-semibold outline-none placeholder:text-current/55"
             />
           )}
 
-          {/* Interactive Crop Frame */}
+          {/* Interactive 8-Handle Crop Frame with Rule-of-Thirds Grid */}
           {activeTool === "crop" && cropRect && (
             <div
               onMouseDown={(e) => startCropDrag("move", e)}
@@ -1169,10 +1871,19 @@ export function EditorWindow({ captureId }: { captureId: string }) {
                 top: ((cropRect.y + layout.offsetY) / scaleFactor) * zoom,
                 width: (cropRect.w / scaleFactor) * zoom,
                 height: (cropRect.h / scaleFactor) * zoom,
-                boxShadow: "0 0 0 9999px rgba(0, 0, 0, 0.34)",
+                boxShadow: "0 0 0 9999px rgba(0, 0, 0, 0.38)",
               }}
-              className="absolute z-20 cursor-move border-2 border-[#007AFF]"
+              className="absolute z-20 cursor-move border-[1.5px] border-white shadow-[inset_0_0_0_1px_rgba(0,122,255,0.85)]"
             >
+              {/* Rule-of-thirds guides */}
+              <div className="pointer-events-none absolute inset-0">
+                <div className="absolute left-1/3 top-0 bottom-0 w-px bg-white/30" />
+                <div className="absolute left-2/3 top-0 bottom-0 w-px bg-white/30" />
+                <div className="absolute top-1/3 left-0 right-0 h-px bg-white/30" />
+                <div className="absolute top-2/3 left-0 right-0 h-px bg-white/30" />
+              </div>
+
+              {/* 4 Corner Handles */}
               {(
                 [
                   ["nw", "-left-1.5 -top-1.5 cursor-nwse-resize"],
@@ -1185,6 +1896,22 @@ export function EditorWindow({ captureId }: { captureId: string }) {
                   key={edge}
                   onMouseDown={(e) => startCropDrag(edge, e)}
                   className={`absolute h-3 w-3 rounded-full border-2 border-[#007AFF] bg-white shadow ${cls}`}
+                />
+              ))}
+
+              {/* 4 Edge Midpoint Pill Handles */}
+              {(
+                [
+                  ["n", "left-1/2 -top-1.5 -translate-x-1/2 h-2.5 w-6 cursor-ns-resize"],
+                  ["s", "left-1/2 -bottom-1.5 -translate-x-1/2 h-2.5 w-6 cursor-ns-resize"],
+                  ["w", "top-1/2 -left-1.5 -translate-y-1/2 w-2.5 h-6 cursor-ew-resize"],
+                  ["e", "top-1/2 -right-1.5 -translate-y-1/2 w-2.5 h-6 cursor-ew-resize"],
+                ] as const
+              ).map(([edge, cls]) => (
+                <div
+                  key={edge}
+                  onMouseDown={(e) => startCropDrag(edge, e)}
+                  className={`absolute rounded-full border-[1.5px] border-[#007AFF] bg-white shadow ${cls}`}
                 />
               ))}
             </div>

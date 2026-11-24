@@ -5,6 +5,8 @@ import {
   Copy,
   Crop,
   Ellipsis,
+  EyeOff,
+  Focus,
   Grid3x3,
   MousePointer2,
   Pencil,
@@ -87,11 +89,51 @@ function MosaicBlurIcon() {
       className="h-[17px] w-[17px]"
     >
       <rect x="3" y="3" width="14" height="14" rx="2.5" />
-      <rect x="5.4" y="5.4" width="3" height="3" rx="0.4" fill="currentColor" stroke="none" />
-      <rect x="11.6" y="5.4" width="3" height="3" rx="0.4" fill="currentColor" stroke="none" />
-      <rect x="8.5" y="8.5" width="3" height="3" rx="0.4" fill="currentColor" stroke="none" />
-      <rect x="5.4" y="11.6" width="3" height="3" rx="0.4" fill="currentColor" stroke="none" />
-      <rect x="11.6" y="11.6" width="3" height="3" rx="0.4" fill="currentColor" stroke="none" />
+      <rect
+        x="5.4"
+        y="5.4"
+        width="3"
+        height="3"
+        rx="0.4"
+        fill="currentColor"
+        stroke="none"
+      />
+      <rect
+        x="11.6"
+        y="5.4"
+        width="3"
+        height="3"
+        rx="0.4"
+        fill="currentColor"
+        stroke="none"
+      />
+      <rect
+        x="8.5"
+        y="8.5"
+        width="3"
+        height="3"
+        rx="0.4"
+        fill="currentColor"
+        stroke="none"
+      />
+      <rect
+        x="5.4"
+        y="11.6"
+        width="3"
+        height="3"
+        rx="0.4"
+        fill="currentColor"
+        stroke="none"
+      />
+      <rect
+        x="11.6"
+        y="11.6"
+        width="3"
+        height="3"
+        rx="0.4"
+        fill="currentColor"
+        stroke="none"
+      />
     </svg>
   );
 }
@@ -158,23 +200,30 @@ export function EditorToolbar({
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
-  const iconCls = "h-[16.5px] w-[16.5px] stroke-[1.75]";
+  const iconCls = "h-[16px] w-[16px] stroke-[1.75]";
 
-  const iconBtn = (active = false) =>
-    `flex h-[32px] w-[32px] cursor-pointer items-center justify-center rounded-[7px] transition-all duration-100 ${
-      active
-        ? "bg-[#007AFF]/[0.11] text-[#0066D6] shadow-[inset_0_0_0_1px_rgba(0,122,255,0.18)]"
-        : "text-[#27272A] hover:bg-black/[0.06] hover:text-[#09090B] active:scale-[0.95]"
+  const iconBtn = (active = false, disabled = false) =>
+    `flex h-[30px] w-[30px] items-center justify-center rounded-[7px] transition-all duration-100 ${
+      disabled
+        ? "cursor-default text-[#27272A]/30"
+        : active
+          ? "cursor-pointer bg-[#007AFF]/[0.11] text-[#0066D6] shadow-[inset_0_0_0_1px_rgba(0,122,255,0.18)]"
+          : "cursor-pointer text-[#27272A] hover:bg-black/[0.06] hover:text-[#09090B] active:scale-[0.95]"
     }`;
+
+  const isRedactActive =
+    activeTool === "blur" ||
+    activeTool === "pixelate" ||
+    activeTool === "blackout";
 
   return (
     <header
       data-tauri-drag-region
-      className={`relative z-30 flex h-[48px] shrink-0 items-center justify-between border-b border-black/[0.08] bg-white/95 pr-3.5 backdrop-blur-md ${
-        isMac ? "pl-[80px]" : "pl-3.5"
+      className={`relative z-30 flex h-[48px] shrink-0 items-center justify-between border-b border-black/[0.08] bg-white/95 pr-3 backdrop-blur-md ${
+        isMac ? "pl-[76px]" : "pl-3"
       }`}
     >
-      {/* Left: Primary Actions + Crop */}
+      {/* Left: Primary Actions + Crop + Undo */}
       <div className="flex items-center gap-0.5">
         <Tooltip label="Copy" shortcut={`${modKey}C`} align="left">
           <button type="button" onClick={onCopy} className={iconBtn(false)}>
@@ -200,7 +249,7 @@ export function EditorToolbar({
           </button>
         </Tooltip>
 
-        <span className="mx-1.5 h-[18px] w-px bg-black/[0.08]" />
+        <span className="mx-1 h-[18px] w-px bg-black/[0.08]" />
 
         <Tooltip label="Crop Canvas" shortcut="C">
           <button
@@ -213,11 +262,21 @@ export function EditorToolbar({
             <Crop className={iconCls} />
           </button>
         </Tooltip>
+        <Tooltip label="Undo" shortcut={`${modKey}Z`} disabled={!canUndo}>
+          <button
+            type="button"
+            disabled={!canUndo}
+            onClick={onUndo}
+            className={iconBtn(false, !canUndo)}
+          >
+            <Undo2 className={iconCls} />
+          </button>
+        </Tooltip>
       </div>
 
       {/* Center: Annotation Tools */}
       <div className="flex items-center gap-0.5">
-        <Tooltip label="Select & Move" shortcut="V">
+        <Tooltip label="Select & Edit" shortcut="V">
           <button
             type="button"
             onClick={() => onSelectTool("select")}
@@ -282,13 +341,11 @@ export function EditorToolbar({
             <Pencil className={iconCls} />
           </button>
         </Tooltip>
-        <Tooltip label="Blur / Mosaic" shortcut="B">
+        <Tooltip label="Blur / Mosaic / Blackout" shortcut="B">
           <button
             type="button"
-            onClick={() => onSelectTool("blur")}
-            className={iconBtn(
-              activeTool === "blur" || activeTool === "pixelate",
-            )}
+            onClick={() => onSelectTool(isRedactActive ? activeTool : "blur")}
+            className={iconBtn(isRedactActive)}
           >
             <MosaicBlurIcon />
           </button>
@@ -304,7 +361,8 @@ export function EditorToolbar({
                 moreOpen ||
                   activeTool === "ellipse" ||
                   activeTool === "line" ||
-                  activeTool === "counter",
+                  activeTool === "counter" ||
+                  activeTool === "spotlight",
               )}
             >
               <Ellipsis className={iconCls} />
@@ -312,7 +370,7 @@ export function EditorToolbar({
           </Tooltip>
 
           {moreOpen && (
-            <div className="animate-pop-in absolute left-0 top-full z-50 mt-2 w-48 rounded-xl border border-black/[0.1] bg-white/95 py-1.5 text-[12.5px] text-[#141416] shadow-[0_12px_36px_rgba(0,0,0,0.14)] backdrop-blur-xl">
+            <div className="animate-pop-in absolute left-0 top-full z-50 mt-2 w-52 rounded-xl border border-black/[0.1] bg-white/95 py-1.5 text-[12.5px] text-[#141416] shadow-[0_12px_36px_rgba(0,0,0,0.14)] backdrop-blur-xl">
               <button
                 type="button"
                 onClick={() => {
@@ -358,6 +416,20 @@ export function EditorToolbar({
               <button
                 type="button"
                 onClick={() => {
+                  onSelectTool("spotlight");
+                  setMoreOpen(false);
+                }}
+                className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05]"
+              >
+                <span className="flex items-center gap-2">
+                  <Focus className="h-3.5 w-3.5 stroke-[1.8] text-[#3F3F46]" />{" "}
+                  Spotlight
+                </span>
+                <span className="font-mono text-[11px] text-[#63636C]">H</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
                   onSelectTool("pixelate");
                   setMoreOpen(false);
                 }}
@@ -368,6 +440,20 @@ export function EditorToolbar({
                   Pixelate
                 </span>
                 <span className="font-mono text-[11px] text-[#63636C]">X</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onSelectTool("blackout");
+                  setMoreOpen(false);
+                }}
+                className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05]"
+              >
+                <span className="flex items-center gap-2">
+                  <EyeOff className="h-3.5 w-3.5 stroke-[1.8] text-[#3F3F46]" />{" "}
+                  Blackout
+                </span>
+                <span className="font-mono text-[11px] text-[#63636C]">K</span>
               </button>
 
               <div className="my-1 h-px bg-black/[0.07]" />
@@ -459,32 +545,32 @@ export function EditorToolbar({
       </div>
 
       {/* Right: Live Inspector */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2.5">
         {/* Live Color Well + Hex (updated directly via refs for 0 React re-renders) */}
         <Tooltip label="Copy Hex Color" shortcut="Tab">
           <button
             type="button"
             onClick={onCopyHex}
-            className="flex cursor-pointer items-center gap-2.5 rounded-lg px-1.5 py-1 text-left transition hover:bg-black/[0.05]"
+            className="flex cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 text-left transition hover:bg-black/[0.05]"
           >
             <span
               ref={colorDotRef}
-              className="h-[22px] w-[22px] shrink-0 rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.16)]"
+              className="h-[20px] w-[20px] shrink-0 rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.16)]"
               style={{ backgroundColor: "#000000" }}
             />
             <div className="flex flex-col leading-[1.2]">
               <span
                 ref={colorHexRef}
-                className="font-mono text-[12px] font-medium tracking-[-0.01em] text-[#141416]"
+                className="font-mono text-[11.5px] font-medium tracking-[-0.01em] text-[#141416]"
               >
                 #000000
               </span>
-              <span className="text-[11px] text-[#52525B]">Tab to copy</span>
+              <span className="text-[10.5px] text-[#52525B]">Tab to copy</span>
             </div>
           </button>
         </Tooltip>
 
-        <span className="h-[26px] w-px bg-black/[0.09]" />
+        <span className="h-[24px] w-px bg-black/[0.09]" />
 
         {/* Image Size */}
         <Tooltip label="Resize Image">
@@ -493,14 +579,14 @@ export function EditorToolbar({
             onClick={onOpenResize}
             className="flex cursor-pointer flex-col rounded-lg px-1.5 py-1 text-left leading-[1.2] transition hover:bg-black/[0.05]"
           >
-            <span className="text-[12px] font-medium tabular-nums tracking-[-0.01em] text-[#141416]">
+            <span className="text-[11.5px] font-medium tabular-nums tracking-[-0.01em] text-[#141416]">
               {widthPt}×{heightPt}pt
             </span>
-            <span className="text-[11px] text-[#52525B]">Image size</span>
+            <span className="text-[10.5px] text-[#52525B]">Image size</span>
           </button>
         </Tooltip>
 
-        <span className="h-[26px] w-px bg-black/[0.09]" />
+        <span className="h-[24px] w-px bg-black/[0.09]" />
 
         {/* Zoom */}
         <div ref={zoomRef} className="relative">
@@ -513,12 +599,12 @@ export function EditorToolbar({
             <button
               type="button"
               onClick={() => setZoomOpen((v) => !v)}
-              className="flex min-w-[46px] cursor-pointer flex-col rounded-lg px-1.5 py-1 text-left leading-[1.2] transition hover:bg-black/[0.05]"
+              className="flex min-w-[44px] cursor-pointer flex-col rounded-lg px-1.5 py-1 text-left leading-[1.2] transition hover:bg-black/[0.05]"
             >
-              <span className="text-[12px] font-medium tabular-nums tracking-[-0.01em] text-[#141416]">
+              <span className="text-[11.5px] font-medium tabular-nums tracking-[-0.01em] text-[#141416]">
                 {Math.round(zoom * 100)}%
               </span>
-              <span className="text-[11px] text-[#52525B]">Zoom</span>
+              <span className="text-[10.5px] text-[#52525B]">Zoom</span>
             </button>
           </Tooltip>
 

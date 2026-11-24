@@ -109,6 +109,42 @@ export function ThumbnailWindow({ captureId }: { captureId: string }) {
     closeWin();
   };
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        void getCurrentWindow().close();
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        void openEditorForCapture(captureId).then(() =>
+          getCurrentWindow().close(),
+        );
+        return;
+      }
+      const mod = e.metaKey || e.ctrlKey;
+      const k = e.key.toLowerCase();
+      if (mod && k === "c") {
+        e.preventDefault();
+        void copyCaptureById(captureId).then(() => {
+          setStatus("copied");
+          setTimeout(() => setStatus(null), 1000);
+        });
+        return;
+      }
+      if (mod && k === "s") {
+        e.preventDefault();
+        void saveCaptureById(captureId).then(() => {
+          setStatus("saved");
+          setTimeout(() => setStatus(null), 1000);
+        });
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [captureId]);
+
   const widthPt = meta ? Math.round(meta.width / meta.scale_factor) : null;
   const heightPt = meta ? Math.round(meta.height / meta.scale_factor) : null;
 

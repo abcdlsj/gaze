@@ -110,8 +110,28 @@ export type EditorTool =
   | "pen"
   | "blur"
   | "pixelate"
+  | "blackout"
+  | "spotlight"
   | "counter"
   | "crop";
+
+export type ShapeFillStyle = "outline" | "tinted" | "solid";
+
+export type TextStyle = "plain" | "badge";
+
+export type RedactMode = "blur" | "pixelate" | "blackout";
+
+export type ResizeHandleId =
+  | "nw"
+  | "n"
+  | "ne"
+  | "e"
+  | "se"
+  | "s"
+  | "sw"
+  | "w"
+  | "start"
+  | "end";
 
 export interface Point {
   x: number;
@@ -137,6 +157,7 @@ export interface ShapeAnnotation extends AnnotationBase {
   width: number;
   height: number;
   filled?: boolean;
+  fillStyle?: ShapeFillStyle;
   cornerRadius?: number;
 }
 
@@ -146,6 +167,7 @@ export interface TextAnnotation extends AnnotationBase {
   y: number;
   text: string;
   fontSize: number;
+  textStyle?: TextStyle;
 }
 
 export interface RulerAnnotation extends AnnotationBase {
@@ -161,12 +183,21 @@ export interface PenAnnotation extends AnnotationBase {
 }
 
 export interface RedactAnnotation extends AnnotationBase {
-  type: "blur" | "pixelate";
+  type: "blur" | "pixelate" | "blackout";
   x: number;
   y: number;
   width: number;
   height: number;
   strength: number;
+}
+
+export interface SpotlightAnnotation extends AnnotationBase {
+  type: "spotlight";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  opacity?: number;
 }
 
 export interface CounterAnnotation extends AnnotationBase {
@@ -184,6 +215,7 @@ export type Annotation =
   | RulerAnnotation
   | PenAnnotation
   | RedactAnnotation
+  | SpotlightAnnotation
   | CounterAnnotation;
 
 export interface BackdropConfig {
