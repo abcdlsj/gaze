@@ -30,13 +30,13 @@ function SoftCheckbox({
     <button
       type="button"
       onClick={onClick}
-      className="group inline-flex cursor-pointer items-center gap-[6px] text-[12.5px] text-[#1D1D1F]"
+      className="group inline-flex cursor-pointer items-center gap-[6px] text-[12.5px] text-[#141416]"
     >
       <span
         className={`flex h-[15px] w-[15px] items-center justify-center rounded-[4px] transition-all ${
           checked
             ? "mac-blue-fill text-white"
-            : "bg-[#E5E5EA] group-hover:bg-[#DADAE0]"
+            : "bg-[#E2E2E8] group-hover:bg-[#D5D5DD]"
         }`}
       >
         {checked && <Check className="h-[10px] w-[10px] stroke-[3.2]" />}
@@ -54,7 +54,9 @@ export function EditorTab({ settings, onChange }: Props) {
   return (
     <div className="flex flex-col px-5 py-3.5">
       <div className="grid grid-cols-[124px_1fr] items-center gap-x-3 gap-y-2.5">
-        <div className="text-right text-[12.5px] text-[#3A3A3C]">Color</div>
+        <div className="text-right text-[12.5px] text-[#2C2C30]">
+          Color
+        </div>
         <div className="flex items-center gap-1.5">
           {PRESET_COLORS.map((hex) => {
             const active = ed.default_color.toLowerCase() === hex.toLowerCase();
@@ -78,7 +80,9 @@ export function EditorTab({ settings, onChange }: Props) {
           })}
         </div>
 
-        <div className="text-right text-[12.5px] text-[#3A3A3C]">Stroke</div>
+        <div className="text-right text-[12.5px] text-[#2C2C30]">
+          Stroke
+        </div>
         <div className="flex items-center gap-2.5">
           <input
             type="range"
@@ -93,12 +97,14 @@ export function EditorTab({ settings, onChange }: Props) {
               background: `linear-gradient(to right, #007AFF 0%, #007AFF ${((ed.stroke_width - 1) / 11) * 100}%, #E5E5EA ${((ed.stroke_width - 1) / 11) * 100}%, #E5E5EA 100%)`,
             }}
           />
-          <span className="w-9 text-right text-[12px] font-medium tabular-nums text-[#6E6E73]">
+          <span className="w-9 text-right text-[12px] font-medium tabular-nums text-[#3F3F46]">
             {ed.stroke_width} px
           </span>
         </div>
 
-        <div className="text-right text-[12.5px] text-[#3A3A3C]">Text size</div>
+        <div className="text-right text-[12.5px] text-[#2C2C30]">
+          Text size
+        </div>
         <div className="flex items-center gap-2.5">
           <input
             type="range"
@@ -111,12 +117,14 @@ export function EditorTab({ settings, onChange }: Props) {
               background: `linear-gradient(to right, #007AFF 0%, #007AFF ${((ed.font_size - 12) / 28) * 100}%, #E5E5EA ${((ed.font_size - 12) / 28) * 100}%, #E5E5EA 100%)`,
             }}
           />
-          <span className="w-9 text-right text-[12px] font-medium tabular-nums text-[#6E6E73]">
+          <span className="w-9 text-right text-[12px] font-medium tabular-nums text-[#3F3F46]">
             {ed.font_size} pt
           </span>
         </div>
 
-        <div className="text-right text-[12.5px] text-[#3A3A3C]">Blur</div>
+        <div className="text-right text-[12.5px] text-[#2C2C30]">
+          Blur
+        </div>
         <div className="flex items-center gap-2.5">
           <input
             type="range"
@@ -131,16 +139,16 @@ export function EditorTab({ settings, onChange }: Props) {
               background: `linear-gradient(to right, #007AFF 0%, #007AFF ${((ed.blur_strength - 4) / 24) * 100}%, #E5E5EA ${((ed.blur_strength - 4) / 24) * 100}%, #E5E5EA 100%)`,
             }}
           />
-          <span className="w-9 text-right text-[12px] font-medium tabular-nums text-[#6E6E73]">
+          <span className="w-9 text-right text-[12px] font-medium tabular-nums text-[#3F3F46]">
             {ed.blur_strength}
           </span>
         </div>
       </div>
 
-      <div className="my-3.5 h-px bg-black/[0.07]" />
+      <div className="my-3.5 h-px bg-black/[0.08]" />
 
       <div className="grid grid-cols-[124px_1fr] items-start gap-x-3">
-        <div className="pt-0.5 text-right text-[12.5px] text-[#3A3A3C]">
+        <div className="pt-0.5 text-right text-[12.5px] text-[#2C2C30]">
           Auto-close
         </div>
         <div className="flex flex-col gap-2">

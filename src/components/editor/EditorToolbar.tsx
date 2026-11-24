@@ -44,7 +44,7 @@ const svgProps = {
   viewBox: "0 0 20 20",
   fill: "none",
   stroke: "currentColor",
-  strokeWidth: 1.4,
+  strokeWidth: 1.45,
   strokeLinecap: "round" as const,
   strokeLinejoin: "round" as const,
   className: "h-[18px] w-[18px]",
@@ -259,8 +259,8 @@ export function EditorToolbar({
   const iconBtn = (active = false) =>
     `flex h-[32px] w-[32px] cursor-pointer items-center justify-center rounded-[7px] transition-all duration-100 ${
       active
-        ? "bg-black/[0.09] text-[#1D1D1F] shadow-[inset_0_0.5px_1px_rgba(0,0,0,0.06)]"
-        : "text-[#2C2C2E] hover:bg-black/[0.05] hover:text-black active:scale-[0.96]"
+        ? "bg-black/[0.1] text-[#141416] shadow-[inset_0_0.5px_1px_rgba(0,0,0,0.07)]"
+        : "text-[#1E1E22] hover:bg-black/[0.06] hover:text-black active:scale-[0.96]"
     }`;
 
   return (
@@ -397,7 +397,7 @@ export function EditorToolbar({
           </button>
 
           {moreOpen && (
-            <div className="animate-pop-in absolute left-0 top-full z-50 mt-2 w-48 rounded-xl border border-black/[0.08] bg-white/95 py-1.5 text-[12.5px] text-[#1D1D1F] shadow-[0_12px_36px_rgba(0,0,0,0.14)] backdrop-blur-xl">
+            <div className="animate-pop-in absolute left-0 top-full z-50 mt-2 w-48 rounded-xl border border-black/[0.1] bg-white/95 py-1.5 text-[12.5px] text-[#141416] shadow-[0_12px_36px_rgba(0,0,0,0.14)] backdrop-blur-xl">
               <button
                 type="button"
                 onClick={() => {
@@ -407,9 +407,9 @@ export function EditorToolbar({
                 className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05]"
               >
                 <span className="flex items-center gap-2">
-                  <Circle className="h-3.5 w-3.5 text-[#515154]" /> Ellipse
+                  <Circle className="h-3.5 w-3.5 text-[#3F3F46]" /> Ellipse
                 </span>
-                <span className="text-[11px] text-[#AEAEB2]">O</span>
+                <span className="font-mono text-[11px] text-[#63636C]">O</span>
               </button>
               <button
                 type="button"
@@ -420,9 +420,9 @@ export function EditorToolbar({
                 className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05]"
               >
                 <span className="flex items-center gap-2">
-                  <Minus className="h-3.5 w-3.5 text-[#515154]" /> Line
+                  <Minus className="h-3.5 w-3.5 text-[#3F3F46]" /> Line
                 </span>
-                <span className="text-[11px] text-[#AEAEB2]">L</span>
+                <span className="font-mono text-[11px] text-[#63636C]">L</span>
               </button>
               <button
                 type="button"
@@ -433,9 +433,9 @@ export function EditorToolbar({
                 className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05]"
               >
                 <span className="flex items-center gap-2">
-                  <Hash className="h-3.5 w-3.5 text-[#515154]" /> Step Counter
+                  <Hash className="h-3.5 w-3.5 text-[#3F3F46]" /> Step Counter
                 </span>
-                <span className="text-[11px] text-[#AEAEB2]">N</span>
+                <span className="font-mono text-[11px] text-[#63636C]">N</span>
               </button>
               <button
                 type="button"
@@ -446,12 +446,12 @@ export function EditorToolbar({
                 className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05]"
               >
                 <span className="flex items-center gap-2">
-                  <Grid2x2 className="h-3.5 w-3.5 text-[#515154]" /> Pixelate
+                  <Grid2x2 className="h-3.5 w-3.5 text-[#3F3F46]" /> Pixelate
                 </span>
-                <span className="text-[11px] text-[#AEAEB2]">X</span>
+                <span className="font-mono text-[11px] text-[#63636C]">X</span>
               </button>
 
-              <div className="my-1 h-px bg-black/[0.06]" />
+              <div className="my-1 h-px bg-black/[0.07]" />
 
               <button
                 type="button"
@@ -460,12 +460,12 @@ export function EditorToolbar({
                   onUndo();
                   setMoreOpen(false);
                 }}
-                className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05] disabled:cursor-default disabled:opacity-35"
+                className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05] disabled:cursor-default disabled:opacity-40"
               >
                 <span className="flex items-center gap-2">
-                  <Undo2 className="h-3.5 w-3.5 text-[#515154]" /> Undo
+                  <Undo2 className="h-3.5 w-3.5 text-[#3F3F46]" /> Undo
                 </span>
-                <span className="text-[11px] text-[#AEAEB2]">⌘Z</span>
+                <span className="font-mono text-[11px] text-[#63636C]">⌘Z</span>
               </button>
               <button
                 type="button"
@@ -474,12 +474,12 @@ export function EditorToolbar({
                   onRedo();
                   setMoreOpen(false);
                 }}
-                className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05] disabled:cursor-default disabled:opacity-35"
+                className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05] disabled:cursor-default disabled:opacity-40"
               >
                 <span className="flex items-center gap-2">
-                  <Redo2 className="h-3.5 w-3.5 text-[#515154]" /> Redo
+                  <Redo2 className="h-3.5 w-3.5 text-[#3F3F46]" /> Redo
                 </span>
-                <span className="text-[11px] text-[#AEAEB2]">⌘⇧Z</span>
+                <span className="font-mono text-[11px] text-[#63636C]">⌘⇧Z</span>
               </button>
               <button
                 type="button"
@@ -488,12 +488,12 @@ export function EditorToolbar({
                   onClearAnnotations();
                   setMoreOpen(false);
                 }}
-                className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-[#FF3B30] hover:bg-[#FF3B30]/[0.06] disabled:cursor-default disabled:opacity-35"
+                className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-[#D70015] hover:bg-[#FF3B30]/[0.06] disabled:cursor-default disabled:opacity-40"
               >
                 <Trash2 className="h-3.5 w-3.5" /> Clear Annotations
               </button>
 
-              <div className="my-1 h-px bg-black/[0.06]" />
+              <div className="my-1 h-px bg-black/[0.07]" />
 
               <button
                 type="button"
@@ -504,9 +504,9 @@ export function EditorToolbar({
                 className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05]"
               >
                 <span className="flex items-center gap-2">
-                  <Save className="h-3.5 w-3.5 text-[#515154]" /> Save As…
+                  <Save className="h-3.5 w-3.5 text-[#3F3F46]" /> Save As…
                 </span>
-                <span className="text-[11px] text-[#AEAEB2]">⌘⇧S</span>
+                <span className="font-mono text-[11px] text-[#63636C]">⌘⇧S</span>
               </button>
               <button
                 type="button"
@@ -517,9 +517,9 @@ export function EditorToolbar({
                 className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05]"
               >
                 <span className="flex items-center gap-2">
-                  <Settings className="h-3.5 w-3.5 text-[#515154]" /> Preferences…
+                  <Settings className="h-3.5 w-3.5 text-[#3F3F46]" /> Preferences…
                 </span>
-                <span className="text-[11px] text-[#AEAEB2]">⌘,</span>
+                <span className="font-mono text-[11px] text-[#63636C]">⌘,</span>
               </button>
             </div>
           )}
@@ -533,40 +533,40 @@ export function EditorToolbar({
           type="button"
           onClick={onCopyHex}
           title="Click or press Tab to copy color"
-          className="flex cursor-pointer items-center gap-2.5 rounded-lg px-1.5 py-1 text-left transition hover:bg-black/[0.04]"
+          className="flex cursor-pointer items-center gap-2.5 rounded-lg px-1.5 py-1 text-left transition hover:bg-black/[0.05]"
         >
           <span
             ref={colorDotRef}
-            className="h-[22px] w-[22px] shrink-0 rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.14)]"
+            className="h-[22px] w-[22px] shrink-0 rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.16)]"
             style={{ backgroundColor: "#000000" }}
           />
           <div className="flex flex-col leading-[1.2]">
             <span
               ref={colorHexRef}
-              className="font-mono text-[12px] font-semibold tracking-[-0.01em] text-[#1D1D1F]"
+              className="font-mono text-[12px] font-medium tracking-[-0.01em] text-[#141416]"
             >
               #000000
             </span>
-            <span className="text-[10.5px] text-[#86868B]">Tab to copy</span>
+            <span className="text-[11px] text-[#52525B]">Tab to copy</span>
           </div>
         </button>
 
-        <span className="h-[26px] w-px bg-black/[0.08]" />
+        <span className="h-[26px] w-px bg-black/[0.09]" />
 
         {/* Image Size */}
         <button
           type="button"
           onClick={onOpenResize}
           title="Click to resize image"
-          className="flex cursor-pointer flex-col rounded-lg px-1.5 py-1 text-left leading-[1.2] transition hover:bg-black/[0.04]"
+          className="flex cursor-pointer flex-col rounded-lg px-1.5 py-1 text-left leading-[1.2] transition hover:bg-black/[0.05]"
         >
-          <span className="text-[12px] font-semibold tabular-nums tracking-[-0.01em] text-[#1D1D1F]">
+          <span className="text-[12px] font-medium tabular-nums tracking-[-0.01em] text-[#141416]">
             {widthPt}×{heightPt}pt
           </span>
-          <span className="text-[10.5px] text-[#86868B]">Image size</span>
+          <span className="text-[11px] text-[#52525B]">Image size</span>
         </button>
 
-        <span className="h-[26px] w-px bg-black/[0.08]" />
+        <span className="h-[26px] w-px bg-black/[0.09]" />
 
         {/* Zoom */}
         <div ref={zoomRef} className="relative">
@@ -574,16 +574,16 @@ export function EditorToolbar({
             type="button"
             onClick={() => setZoomOpen((v) => !v)}
             title="Change Zoom (⌘+ / ⌘- / ⌘0)"
-            className="flex min-w-[46px] cursor-pointer flex-col rounded-lg px-1.5 py-1 text-left leading-[1.2] transition hover:bg-black/[0.04]"
+            className="flex min-w-[46px] cursor-pointer flex-col rounded-lg px-1.5 py-1 text-left leading-[1.2] transition hover:bg-black/[0.05]"
           >
-            <span className="text-[12px] font-semibold tabular-nums tracking-[-0.01em] text-[#1D1D1F]">
+            <span className="text-[12px] font-medium tabular-nums tracking-[-0.01em] text-[#141416]">
               {Math.round(zoom * 100)}%
             </span>
-            <span className="text-[10.5px] text-[#86868B]">Zoom</span>
+            <span className="text-[11px] text-[#52525B]">Zoom</span>
           </button>
 
           {zoomOpen && (
-            <div className="animate-pop-in absolute right-0 top-full z-50 mt-2 w-28 rounded-xl border border-black/[0.08] bg-white/95 py-1 text-[12px] text-[#1D1D1F] shadow-[0_12px_36px_rgba(0,0,0,0.14)] backdrop-blur-xl">
+            <div className="animate-pop-in absolute right-0 top-full z-50 mt-2 w-28 rounded-xl border border-black/[0.1] bg-white/95 py-1 text-[12px] text-[#141416] shadow-[0_12px_36px_rgba(0,0,0,0.14)] backdrop-blur-xl">
               <button
                 type="button"
                 onClick={() => {
@@ -594,7 +594,7 @@ export function EditorToolbar({
               >
                 Fit Window
               </button>
-              <div className="my-1 h-px bg-black/[0.06]" />
+              <div className="my-1 h-px bg-black/[0.07]" />
               {[0.5, 1, 1.5, 2, 4].map((z) => (
                 <button
                   key={z}
@@ -607,7 +607,7 @@ export function EditorToolbar({
                 >
                   <span>{Math.round(z * 100)}%</span>
                   {Math.abs(zoom - z) < 0.02 && (
-                    <span className="text-[#007AFF]">●</span>
+                    <span className="text-[#0066D6]">●</span>
                   )}
                 </button>
               ))}

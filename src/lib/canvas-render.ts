@@ -1,5 +1,15 @@
 import type { Annotation, BackdropConfig, Point } from "../types";
 
+export function isLightHexColor(hex: string): boolean {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return false;
+  const n = parseInt(m[1], 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return 0.299 * r + 0.587 * g + 0.114 * b > 195;
+}
+
 export interface CompositeLayout {
   canvasWidth: number;
   canvasHeight: number;
@@ -355,12 +365,15 @@ function drawAnnotation(
     case "text": {
       if (!ann.text.trim()) break;
       const fontPx = Math.round(ann.fontSize * scaleFactor);
-      ctx.font = `600 ${fontPx}px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif`;
+      ctx.font = `600 ${fontPx}px -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif`;
       ctx.fillStyle = ann.color;
       ctx.textBaseline = "top";
-      // Subtle halo for legibility on dark or busy backgrounds
-      ctx.shadowColor = "rgba(0, 0, 0, 0.22)";
-      ctx.shadowBlur = 2 * scaleFactor;
+      // Add a tight directional shadow only for light colors (e.g., white/yellow) so dark & saturated text stays razor-sharp
+      if (isLightHexColor(ann.color)) {
+        ctx.shadowColor = "rgba(0, 0, 0, 0.42)";
+        ctx.shadowBlur = 1.5 * scaleFactor;
+        ctx.shadowOffsetY = 0.75 * scaleFactor;
+      }
       const lines = ann.text.split("\n");
       const lh = fontPx * 1.28;
       lines.forEach((line, idx) => {

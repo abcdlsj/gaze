@@ -103,16 +103,16 @@ export function PreferencesWindow() {
   }, []);
 
   return (
-    <div className="flex h-full w-full flex-col bg-white text-[#1D1D1F]">
+    <div className="flex h-full w-full flex-col bg-white text-[#141416]">
       {/* Compact macOS-style Unified Preferences Header */}
       <header
         ref={headerRef}
         data-tauri-drag-region
-        className="flex shrink-0 flex-col items-center border-b border-black/[0.07] bg-[#F7F7F9]/95 pb-2 pt-[7px]"
+        className="flex shrink-0 flex-col items-center border-b border-black/[0.08] bg-[#F6F6F8] pb-2 pt-[7px]"
       >
         <div
           data-tauri-drag-region
-          className="font-display mb-1.5 text-[13px] font-semibold tracking-[-0.015em] text-[#3C3C43]"
+          className="font-display mb-1.5 text-[13px] font-semibold tracking-[-0.012em] text-[#141416]"
         >
           Preferences
         </div>
@@ -128,12 +128,16 @@ export function PreferencesWindow() {
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex w-[66px] flex-col items-center gap-[3px] rounded-[8px] py-[5px] transition-all duration-150 ${
                   active
-                    ? "bg-white text-[#007AFF] shadow-[0_1px_3px_rgba(0,0,0,0.08),0_0.5px_1px_rgba(0,0,0,0.05)]"
-                    : "text-[#6E6E73] hover:bg-black/[0.04] hover:text-[#1D1D1F]"
+                    ? "bg-white text-[#0066D6] shadow-[0_1px_3px_rgba(0,0,0,0.09),0_0.5px_1px_rgba(0,0,0,0.06)]"
+                    : "text-[#48484F] hover:bg-black/[0.05] hover:text-[#141416]"
                 }`}
               >
-                <Icon className="h-[18px] w-[18px] stroke-[1.6]" />
-                <span className="text-[10.5px] font-medium leading-none tracking-[-0.005em]">
+                <Icon className="h-[18px] w-[18px] stroke-[1.65]" />
+                <span
+                  className={`text-[11px] leading-none tracking-[-0.005em] ${
+                    active ? "font-medium" : "font-normal"
+                  }`}
+                >
                   {tab.label}
                 </span>
               </button>
@@ -145,7 +149,7 @@ export function PreferencesWindow() {
       {/* Clean White Content Surface */}
       <main className="flex-1 overflow-y-auto bg-white">
         {!settings ? (
-          <div className="flex h-40 items-center justify-center text-[12px] text-[#86868B]">
+          <div className="flex h-40 items-center justify-center text-[12px] font-medium text-[#52525B]">
             Loading…
           </div>
         ) : (

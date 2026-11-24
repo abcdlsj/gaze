@@ -22,11 +22,11 @@ function TooltipBadge({ text }: { text: string }) {
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
     >
-      <span className="inline-flex h-[16px] w-[16px] cursor-default items-center justify-center rounded-full bg-[#EBEBED] text-[10.5px] font-semibold text-[#515154] transition hover:bg-[#E0E0E4]">
+      <span className="inline-flex h-[16px] w-[16px] cursor-default items-center justify-center rounded-full bg-[#E8E8EC] text-[10.5px] font-semibold text-[#3F3F46] transition hover:bg-[#DCDCE2]">
         ?
       </span>
       {open && (
-        <span className="animate-pop-in pointer-events-none absolute left-1/2 top-full z-50 mt-1 w-52 -translate-x-1/2 rounded-lg border border-black/[0.08] bg-white/95 px-2.5 py-1.5 text-[11px] leading-snug text-[#424245] shadow-[0_6px_20px_rgba(0,0,0,0.12)] backdrop-blur-md">
+        <span className="animate-pop-in pointer-events-none absolute left-1/2 top-full z-50 mt-1 w-52 -translate-x-1/2 rounded-lg border border-black/[0.1] bg-white/95 px-2.5 py-1.5 text-[11.5px] leading-snug text-[#2C2C30] shadow-[0_6px_20px_rgba(0,0,0,0.12)] backdrop-blur-md">
           {text}
         </span>
       )}
@@ -48,18 +48,18 @@ function MacRadio({
     <button
       type="button"
       onClick={onClick}
-      className="group inline-flex cursor-pointer items-center gap-[6px] text-[12.5px] text-[#1D1D1F]"
+      className="group inline-flex cursor-pointer items-center gap-[6px] text-[12.5px] text-[#141416]"
     >
       <span
         className={`flex h-[15px] w-[15px] items-center justify-center rounded-full transition-all duration-150 ${
           checked
             ? "mac-blue-fill"
-            : "bg-[#E5E5EA] group-hover:bg-[#DADAE0]"
+            : "bg-[#E2E2E8] group-hover:bg-[#D5D5DD]"
         }`}
       >
         {checked && <span className="h-[5.5px] w-[5.5px] rounded-full bg-white shadow-2xs" />}
       </span>
-      <span className="tracking-[-0.005em]">{label}</span>
+      <span>{label}</span>
     </button>
   );
 }
@@ -78,18 +78,18 @@ function MacCheckbox({
     <button
       type="button"
       onClick={onClick}
-      className="group inline-flex cursor-pointer items-center gap-[6px] text-[12.5px] text-[#1D1D1F]"
+      className="group inline-flex cursor-pointer items-center gap-[6px] text-[12.5px] text-[#141416]"
     >
       <span
         className={`flex h-[15px] w-[15px] items-center justify-center rounded-[4px] transition-all duration-150 ${
           checked
             ? "mac-blue-fill text-white"
-            : "bg-[#E5E5EA] group-hover:bg-[#DADAE0]"
+            : "bg-[#E2E2E8] group-hover:bg-[#D5D5DD]"
         }`}
       >
         {checked && <Check className="h-[10px] w-[10px] stroke-[3.2]" />}
       </span>
-      <span className="tracking-[-0.005em]">{label}</span>
+      <span>{label}</span>
     </button>
   );
 }
@@ -187,8 +187,10 @@ function MiniWindowCard({
         )}
       </div>
       <span
-        className={`text-[11.5px] tracking-[-0.005em] transition ${
-          selected ? "font-medium text-[#1D1D1F]" : "text-[#424245]"
+        className={`text-[11.5px] transition ${
+          selected
+            ? "font-medium text-[#141416]"
+            : "font-normal text-[#3F3F46]"
         }`}
       >
         {labels[mode]}
@@ -238,12 +240,12 @@ export function GeneralTab({ settings, onChange }: Props) {
     <div className="flex flex-col px-5 py-3.5">
       {/* Window Background */}
       <div className="flex items-center gap-1.5">
-        <span className="text-[12.5px] font-medium tracking-[-0.01em] text-[#1D1D1F]">
+        <span className="text-[12.5px] font-medium tracking-[-0.008em] text-[#141416]">
           Window Background
         </span>
         <TooltipBadge text="Background style for window captures." />
         {settings.window_background === "solid_color" && (
-          <label className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-[#F5F5F7] px-2 py-0.5 text-[11px] font-medium text-[#515154] ring-1 ring-black/[0.06]">
+          <label className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-[#F4F4F6] px-2 py-0.5 text-[11px] font-medium text-[#2C2C30] ring-1 ring-black/[0.08]">
             <span>Color</span>
             <input
               type="color"
@@ -271,23 +273,25 @@ export function GeneralTab({ settings, onChange }: Props) {
         ))}
       </div>
 
-      <div className="my-3 h-px bg-black/[0.07]" />
+      <div className="my-3 h-px bg-black/[0.08]" />
 
       {/* Folder / Format / Retina */}
       <div className="grid grid-cols-[136px_1fr] items-center gap-x-3 gap-y-2">
-        <div className="text-right text-[12.5px] text-[#3A3A3C]">
+        <div className="text-right text-[12.5px] text-[#2C2C30]">
           Save folder
         </div>
         <button
           type="button"
           onClick={() => void pickFolder()}
           title={settings.screenshots_folder}
-          className="mac-btn flex h-[26px] w-full min-w-0 cursor-pointer items-center rounded-[6px] px-2.5 text-left font-mono text-[11.5px] font-normal text-[#1D1D1F] transition"
+          className="mac-btn flex h-[26px] w-full min-w-0 cursor-pointer items-center rounded-[6px] px-2.5 text-left font-mono text-[11.5px] font-normal text-[#141416] transition"
         >
           <span className="truncate">{folderDisplay}</span>
         </button>
 
-        <div className="text-right text-[12.5px] text-[#3A3A3C]">Format</div>
+        <div className="text-right text-[12.5px] text-[#2C2C30]">
+          Format
+        </div>
         <div className="flex items-center gap-3.5">
           <MacRadio
             checked={settings.save_format === "png"}
@@ -302,7 +306,7 @@ export function GeneralTab({ settings, onChange }: Props) {
           <TooltipBadge text="PNG for UI/transparency, JPEG for large photos." />
         </div>
 
-        <div className="text-right text-[12.5px] text-[#3A3A3C]">
+        <div className="text-right text-[12.5px] text-[#2C2C30]">
           Retina resize
         </div>
         <div>
@@ -316,11 +320,11 @@ export function GeneralTab({ settings, onChange }: Props) {
         </div>
       </div>
 
-      <div className="my-3 h-px bg-black/[0.07]" />
+      <div className="my-3 h-px bg-black/[0.08]" />
 
       {/* Scrolling settings */}
       <div className="grid grid-cols-[136px_1fr] items-center gap-x-3 gap-y-2">
-        <div className="text-right text-[12.5px] text-[#3A3A3C]">
+        <div className="text-right text-[12.5px] text-[#2C2C30]">
           Scroll max height
         </div>
         <div className="flex items-center gap-1.5">
@@ -334,12 +338,12 @@ export function GeneralTab({ settings, onChange }: Props) {
                 commitMaxHeight();
               }
             }}
-            className="h-[25px] w-[88px] rounded-[6px] border border-black/[0.14] bg-white px-2 text-right text-[12.5px] tabular-nums text-[#1D1D1F] shadow-[inset_0_0.5px_1.5px_rgba(0,0,0,0.05)] outline-none transition focus:border-[#007AFF] focus:ring-[3px] focus:ring-[#007AFF]/20"
+            className="h-[25px] w-[88px] rounded-[6px] border border-black/[0.16] bg-white px-2 text-right text-[12.5px] tabular-nums text-[#141416] shadow-[inset_0_0.5px_1.5px_rgba(0,0,0,0.05)] outline-none transition focus:border-[#007AFF] focus:ring-[3px] focus:ring-[#007AFF]/20"
           />
-          <span className="text-[12.5px] text-[#3A3A3C]">px</span>
+          <span className="text-[12.5px] text-[#2C2C30]">px</span>
         </div>
 
-        <div className="text-right text-[12.5px] text-[#3A3A3C]">
+        <div className="text-right text-[12.5px] text-[#2C2C30]">
           Scroll speed
         </div>
         <div className="flex flex-col pt-0.5">
@@ -360,18 +364,20 @@ export function GeneralTab({ settings, onChange }: Props) {
             {[0, 1, 2, 3].map((tick) => (
               <span
                 key={tick}
-                className="h-[3px] w-[1.5px] rounded-full bg-black/[0.16]"
+                className="h-[3px] w-[1.5px] rounded-full bg-black/[0.18]"
               />
             ))}
           </div>
         </div>
       </div>
 
-      <div className="my-3 h-px bg-black/[0.07]" />
+      <div className="my-3 h-px bg-black/[0.08]" />
 
       {/* Startup & Post-capture workflow */}
       <div className="grid grid-cols-[136px_1fr] items-center gap-x-3 gap-y-2">
-        <div className="text-right text-[12.5px] text-[#3A3A3C]">Autostart</div>
+        <div className="text-right text-[12.5px] text-[#2C2C30]">
+          Autostart
+        </div>
         <div>
           <MacCheckbox
             checked={settings.autostart}
@@ -380,7 +386,7 @@ export function GeneralTab({ settings, onChange }: Props) {
           />
         </div>
 
-        <div className="text-right text-[12.5px] text-[#3A3A3C]">
+        <div className="text-right text-[12.5px] text-[#2C2C30]">
           After capture
         </div>
         <div className="flex items-center gap-3.5">
@@ -413,7 +419,7 @@ export function GeneralTab({ settings, onChange }: Props) {
           />
         </div>
 
-        <div className="text-right text-[12.5px] text-[#3A3A3C]">
+        <div className="text-right text-[12.5px] text-[#2C2C30]">
           After crop
         </div>
         <div className="flex items-center gap-3.5">
@@ -433,7 +439,7 @@ export function GeneralTab({ settings, onChange }: Props) {
           />
         </div>
 
-        <div className="text-right text-[12.5px] text-[#3A3A3C]">
+        <div className="text-right text-[12.5px] text-[#2C2C30]">
           Hide thumbnail
         </div>
         <div className="relative">
@@ -447,8 +453,8 @@ export function GeneralTab({ settings, onChange }: Props) {
             }
             className={`h-[26px] w-full appearance-none rounded-[6px] pl-2.5 pr-7 text-[12.5px] outline-none transition ${
               thumbnailDisabled
-                ? "cursor-not-allowed bg-[#F2F2F4] text-[#AEAEB2]"
-                : "cursor-pointer border border-black/[0.12] bg-white text-[#1D1D1F] shadow-[0_0.5px_1px_rgba(0,0,0,0.05)] focus:border-[#007AFF] focus:ring-[3px] focus:ring-[#007AFF]/20"
+                ? "cursor-not-allowed bg-[#F2F2F5] text-[#8E8E95]"
+                : "cursor-pointer border border-black/[0.15] bg-white text-[#141416] shadow-[0_0.5px_1px_rgba(0,0,0,0.05)] focus:border-[#007AFF] focus:ring-[3px] focus:ring-[#007AFF]/20"
             }`}
           >
             <option value="manually">Manually</option>
@@ -458,7 +464,7 @@ export function GeneralTab({ settings, onChange }: Props) {
           </select>
           <ChevronsUpDown
             className={`pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 ${
-              thumbnailDisabled ? "text-[#C7C7CC]" : "text-[#6E6E73]"
+              thumbnailDisabled ? "text-[#A1A1AA]" : "text-[#52525B]"
             }`}
           />
         </div>

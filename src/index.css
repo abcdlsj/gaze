@@ -2,33 +2,40 @@
 
 @layer base {
   :root {
-    --font-ui: "SF Pro Text", -apple-system, BlinkMacSystemFont, "PingFang SC",
+    --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
       "Hiragino Sans GB", "Segoe UI Variable Text", "Segoe UI", sans-serif;
-    --font-display: "SF Pro Display", -apple-system, BlinkMacSystemFont,
+    --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display",
       "PingFang SC", "Segoe UI Variable Display", "Segoe UI", sans-serif;
     --font-mono: "SF Mono", ui-monospace, Menlo, "Cascadia Mono", Consolas,
       monospace;
 
+    /* High-contrast neutral ink ramp (WCAG AA/AAA on light surfaces) */
+    --ink-primary: #141416;
+    --ink-label: #2c2c30;
+    --ink-muted: #52525b;
+    --ink-subtle: #63636c;
+
     font-family: var(--font-ui);
     font-size: 13px;
     line-height: 1.42;
-    letter-spacing: -0.008em;
+    letter-spacing: -0.004em;
     font-feature-settings: "cv01" 1, "ss01" 1;
-    color: #1d1d1f;
+    color: var(--ink-primary);
     background-color: transparent;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    /* Let macOS CoreText / Windows ClearType apply native light-mode stem darkening
+       instead of forcing thin grayscale antialiasing on light surfaces. */
+    -webkit-font-smoothing: auto;
     text-rendering: optimizeLegibility;
   }
 
-  /* Refined macOS editorial typography */
+  /* Native macOS optical-size system typography */
   :root[data-platform="macos"] {
-    --font-ui: "SF Pro Text", -apple-system, BlinkMacSystemFont, "PingFang SC",
+    --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
       "Hiragino Sans GB", sans-serif;
-    --font-display: "SF Pro Display", -apple-system, BlinkMacSystemFont,
+    --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display",
       "PingFang SC", sans-serif;
     --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.004em;
   }
 
   /* Crisp Windows 11 Fluent typography */
@@ -38,7 +45,7 @@
     --font-display: "Segoe UI Variable Display", "Segoe UI",
       "Microsoft YaHei UI", sans-serif;
     --font-mono: "Cascadia Mono", "Consolas", ui-monospace, monospace;
-    letter-spacing: -0.003em;
+    letter-spacing: -0.002em;
   }
 
   h1,
@@ -46,7 +53,7 @@
   h3,
   .font-display {
     font-family: var(--font-display);
-    letter-spacing: -0.02em;
+    letter-spacing: -0.016em;
   }
 
   .font-mono {

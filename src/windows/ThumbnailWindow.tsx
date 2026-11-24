@@ -138,7 +138,7 @@ export function ThumbnailWindow({ captureId }: { captureId: string }) {
 
       {/* Bottom quick action bar */}
       <div className="flex h-9 shrink-0 items-center justify-between border-t border-neutral-200/80 bg-[#FAFAFB] px-2">
-        <span className="text-[11px] tabular-nums text-neutral-500">
+        <span className="text-[11px] tabular-nums text-[#3F3F46]">
           {meta
             ? `${Math.round(meta.width / meta.scale_factor)}×${Math.round(meta.height / meta.scale_factor)}pt`
             : ""}

@@ -5,6 +5,7 @@ import {
   computeLayout,
   exportCompositePng,
   hitTestAnnotation,
+  isLightHexColor,
   renderComposite,
   translateAnnotation,
 } from "../lib/canvas-render";
@@ -993,7 +994,7 @@ export function EditorWindow({ captureId }: { captureId: string }) {
   const heightPt = Math.round(layout.canvasHeight / scaleFactor);
 
   return (
-    <div className="flex h-full w-full flex-col bg-white text-[#1D1D1F]">
+    <div className="flex h-full w-full flex-col bg-white text-[#141416]">
       <EditorToolbar
         activeTool={activeTool}
         onSelectTool={selectTool}
@@ -1112,9 +1113,13 @@ export function EditorWindow({ captureId }: { captureId: string }) {
                 top: ((textDraft.y + layout.offsetY) / scaleFactor) * zoom - 1,
                 color,
                 caretColor: color,
+                fontFamily:
+                  '-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif',
                 fontSize: `${fontSize * zoom}px`,
                 lineHeight: 1.28,
-                textShadow: "0 0 2px rgba(0, 0, 0, 0.22)",
+                textShadow: isLightHexColor(color)
+                  ? "0 0.75px 1.5px rgba(0, 0, 0, 0.42)"
+                  : "none",
                 width: `${Math.max(
                   6,
                   ...textDraft.value.split("\n").map((line) => {
@@ -1133,7 +1138,7 @@ export function EditorWindow({ captureId }: { captureId: string }) {
                 userSelect: "text",
               }}
               placeholder="Type…"
-              className="absolute z-30 resize-none overflow-hidden rounded-[3px] border border-dashed border-[#007AFF]/70 bg-transparent px-0.5 py-0 font-semibold outline-none placeholder:text-current/45"
+              className="absolute z-30 resize-none overflow-hidden rounded-[3px] border border-dashed border-[#007AFF]/70 bg-transparent px-0.5 py-0 font-semibold outline-none placeholder:text-current/55"
             />
           )}
 
@@ -1170,7 +1175,7 @@ export function EditorWindow({ captureId }: { captureId: string }) {
 
         {/* Minimal Frosted Toast */}
         {toast && (
-          <div className="animate-pop-in pointer-events-none absolute bottom-5 left-1/2 z-40 -translate-x-1/2 rounded-full bg-[#1C1C1E]/88 px-4 py-1.5 text-[12px] font-medium text-white shadow-xl backdrop-blur-md">
+          <div className="animate-pop-in pointer-events-none absolute bottom-5 left-1/2 z-40 -translate-x-1/2 rounded-full bg-[#1C1C1E]/90 px-4 py-1.5 text-[12px] font-medium text-white antialiased shadow-xl backdrop-blur-md">
             {toast}
           </div>
         )}

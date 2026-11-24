@@ -571,7 +571,7 @@ export function OverlayWindow() {
       {!isDragging && !selection && (
         <div
           onMouseDown={(e) => e.stopPropagation()}
-          className="animate-pop-in absolute left-1/2 top-14 z-30 flex max-w-[calc(100vw-32px)] -translate-x-1/2 items-center gap-1 rounded-full bg-[#1C1C1E]/86 p-1 text-[12px] text-white shadow-[0_10px_32px_rgba(0,0,0,0.34)] ring-1 ring-white/15 backdrop-blur-xl"
+          className="animate-pop-in absolute left-1/2 top-14 z-30 flex max-w-[calc(100vw-32px)] -translate-x-1/2 items-center gap-1 rounded-full bg-[#1C1C1E]/86 p-1 text-[12px] text-white antialiased shadow-[0_10px_32px_rgba(0,0,0,0.34)] ring-1 ring-white/15 backdrop-blur-xl"
         >
           <button
             type="button"
@@ -780,7 +780,7 @@ export function OverlayWindow() {
           display: hideLoupe ? "none" : "block",
           willChange: "transform",
         }}
-        className="pointer-events-none fixed left-0 top-0 z-30 w-[132px] overflow-hidden rounded-xl bg-[#1C1C1E]/90 shadow-[0_12px_36px_rgba(0,0,0,0.4)] ring-1 ring-white/20 backdrop-blur-md"
+        className="pointer-events-none fixed left-0 top-0 z-30 w-[132px] overflow-hidden rounded-xl bg-[#1C1C1E]/90 antialiased shadow-[0_12px_36px_rgba(0,0,0,0.4)] ring-1 ring-white/20 backdrop-blur-md"
       >
         <canvas
           ref={loupeCanvasRef}

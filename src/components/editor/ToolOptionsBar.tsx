@@ -66,28 +66,28 @@ export function ToolOptionsBar({
   }
 
   return (
-    <div className="animate-pop-in pointer-events-auto absolute left-1/2 top-3 z-20 flex -translate-x-1/2 items-center gap-3 rounded-full border border-black/[0.08] bg-white/92 px-3.5 py-1.5 text-[12px] text-[#1D1D1F] shadow-[0_8px_28px_rgba(0,0,0,0.12)] backdrop-blur-xl">
+    <div className="animate-pop-in pointer-events-auto absolute left-1/2 top-3 z-20 flex -translate-x-1/2 items-center gap-3 rounded-full border border-black/[0.1] bg-white/95 px-3.5 py-1.5 text-[12px] text-[#141416] shadow-[0_8px_28px_rgba(0,0,0,0.12)] backdrop-blur-xl">
       {activeTool === "crop" ? (
         <div className="flex items-center gap-2">
-          <span className="text-[#6E6E73]">Drag handles to crop</span>
+          <span className="text-[#3F3F46]">Drag handles to crop</span>
           <button
             type="button"
             onClick={onApplyCrop}
-            className="mac-blue-fill inline-flex cursor-pointer items-center gap-1 rounded-full px-3 py-1 text-[11.5px] font-medium text-white transition hover:brightness-105"
+            className="mac-blue-fill inline-flex cursor-pointer items-center gap-1 rounded-full px-3 py-1 text-[11.5px] font-medium text-white antialiased transition hover:brightness-105"
           >
             <Check className="h-3.5 w-3.5" /> Apply
           </button>
           <button
             type="button"
             onClick={onCancelCrop}
-            className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-black/[0.05] px-2.5 py-1 text-[11.5px] text-[#424245] transition hover:bg-black/[0.09]"
+            className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-black/[0.06] px-2.5 py-1 text-[11.5px] text-[#2C2C30] transition hover:bg-black/[0.1]"
           >
             <X className="h-3.5 w-3.5" /> Cancel
           </button>
         </div>
       ) : activeTool === "frame" ? (
         <div className="flex items-center gap-3">
-          <label className="inline-flex cursor-pointer items-center gap-1.5 font-medium">
+          <label className="inline-flex cursor-pointer items-center gap-1.5 text-[#141416]">
             <input
               type="checkbox"
               checked={backdrop.enabled}
@@ -120,7 +120,7 @@ export function ToolOptionsBar({
               />
             ))}
           </div>
-          <label className="flex items-center gap-1.5 text-[11.5px] text-[#6E6E73]">
+          <label className="flex items-center gap-1.5 text-[11.5px] text-[#3F3F46]">
             <span>Pad</span>
             <input
               type="range"
@@ -137,7 +137,7 @@ export function ToolOptionsBar({
               className="w-16 accent-[#007AFF]"
             />
           </label>
-          <label className="flex items-center gap-1.5 text-[11.5px] text-[#6E6E73]">
+          <label className="flex items-center gap-1.5 text-[11.5px] text-[#3F3F46]">
             <span>Round</span>
             <input
               type="range"
@@ -163,8 +163,8 @@ export function ToolOptionsBar({
               onClick={() => onSelectTool("blur")}
               className={`cursor-pointer rounded-full px-2.5 py-0.5 transition ${
                 activeTool === "blur"
-                  ? "bg-white font-medium text-[#1D1D1F] shadow-xs"
-                  : "text-[#6E6E73]"
+                  ? "bg-white font-medium text-[#141416] shadow-xs"
+                  : "text-[#52525B] hover:text-[#141416]"
               }`}
             >
               Blur
@@ -174,14 +174,14 @@ export function ToolOptionsBar({
               onClick={() => onSelectTool("pixelate")}
               className={`cursor-pointer rounded-full px-2.5 py-0.5 transition ${
                 activeTool === "pixelate"
-                  ? "bg-white font-medium text-[#1D1D1F] shadow-xs"
-                  : "text-[#6E6E73]"
+                  ? "bg-white font-medium text-[#141416] shadow-xs"
+                  : "text-[#52525B] hover:text-[#141416]"
               }`}
             >
               Pixelate
             </button>
           </div>
-          <label className="flex items-center gap-2 text-[11.5px] text-[#6E6E73]">
+          <label className="flex items-center gap-2 text-[11.5px] text-[#3F3F46]">
             <span>Strength</span>
             <input
               type="range"
@@ -211,10 +211,10 @@ export function ToolOptionsBar({
             ))}
           </div>
 
-          <span className="h-4 w-px bg-black/[0.08]" />
+          <span className="h-4 w-px bg-black/[0.1]" />
 
           {activeTool === "text" ? (
-            <label className="flex items-center gap-2 text-[11.5px] text-[#6E6E73]">
+            <label className="flex items-center gap-2 text-[11.5px] text-[#3F3F46]">
               <span>Size</span>
               <input
                 type="range"
@@ -224,12 +224,12 @@ export function ToolOptionsBar({
                 onChange={(e) => onFontSizeChange(Number(e.target.value))}
                 className="w-20 accent-[#007AFF]"
               />
-              <span className="w-7 text-right tabular-nums text-[#1D1D1F]">
+              <span className="w-7 text-right font-medium tabular-nums text-[#141416]">
                 {fontSize}
               </span>
             </label>
           ) : (
-            <label className="flex items-center gap-2 text-[11.5px] text-[#6E6E73]">
+            <label className="flex items-center gap-2 text-[11.5px] text-[#3F3F46]">
               <span>Width</span>
               <input
                 type="range"
@@ -239,14 +239,14 @@ export function ToolOptionsBar({
                 onChange={(e) => onStrokeWidthChange(Number(e.target.value))}
                 className="w-16 accent-[#007AFF]"
               />
-              <span className="w-4 text-right tabular-nums text-[#1D1D1F]">
+              <span className="w-4 text-right font-medium tabular-nums text-[#141416]">
                 {strokeWidth}
               </span>
             </label>
           )}
 
           {(activeTool === "rect" || activeTool === "ellipse") && (
-            <label className="inline-flex cursor-pointer items-center gap-1.5 text-[11.5px]">
+            <label className="inline-flex cursor-pointer items-center gap-1.5 text-[11.5px] text-[#141416]">
               <input
                 type="checkbox"
                 checked={filled}
@@ -258,7 +258,7 @@ export function ToolOptionsBar({
           )}
 
           {activeTool === "pen" && (
-            <label className="inline-flex cursor-pointer items-center gap-1.5 text-[11.5px]">
+            <label className="inline-flex cursor-pointer items-center gap-1.5 text-[11.5px] text-[#141416]">
               <input
                 type="checkbox"
                 checked={highlighter}

@@ -120,15 +120,15 @@ export function HotkeysTab({
   return (
     <div className="flex flex-col px-5 py-3.5">
       <div className="mb-2.5">
-        <h3 className="text-[13px] font-semibold tracking-[-0.01em] text-[#1D1D1F]">
+        <h3 className="text-[13px] font-semibold tracking-[-0.01em] text-[#141416]">
           Shortcuts
         </h3>
-        <p className="mt-0.5 text-[11px] text-[#86868B]">
+        <p className="mt-0.5 text-[11.5px] text-[#52525B]">
           Click to record. Esc cancels.
         </p>
       </div>
 
-      <div className="divide-y divide-black/[0.06] overflow-hidden rounded-lg border border-black/[0.08] bg-[#FAFAFC]">
+      <div className="divide-y divide-black/[0.07] overflow-hidden rounded-lg border border-black/[0.09] bg-[#FAFAFC]">
         {ROWS.map((row) => {
           const rawValue = settings.hotkeys[row.key];
           const display = formatShortcutDisplay(rawValue);
@@ -139,10 +139,10 @@ export function HotkeysTab({
             <div key={row.key} className="flex flex-col gap-0.5 px-3.5 py-2">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-[12.5px] font-medium leading-tight text-[#1D1D1F]">
+                  <div className="text-[12.5px] font-medium leading-tight text-[#141416]">
                     {row.label}
                   </div>
-                  <div className="text-[11px] leading-snug text-[#86868B]">
+                  <div className="text-[11.5px] leading-snug text-[#52525B]">
                     {row.hint}
                   </div>
                 </div>
@@ -155,10 +155,10 @@ export function HotkeysTab({
                     }
                     className={`flex h-[26px] min-w-[116px] cursor-pointer items-center justify-center rounded-[6px] px-2.5 text-[12px] font-medium transition-all ${
                       isRecording
-                        ? "border border-[#007AFF] bg-[#007AFF]/[0.08] text-[#007AFF] ring-[3px] ring-[#007AFF]/20"
+                        ? "border border-[#007AFF] bg-[#007AFF]/[0.08] text-[#0066D6] ring-[3px] ring-[#007AFF]/20"
                         : display
-                          ? "border border-black/[0.1] bg-white text-[#1D1D1F] shadow-[0_1px_1.5px_rgba(0,0,0,0.05)] hover:border-black/[0.2]"
-                          : "border border-dashed border-black/[0.16] bg-white/60 text-[#AEAEB2] hover:border-black/[0.28] hover:text-[#6E6E73]"
+                          ? "border border-black/[0.12] bg-white font-mono text-[#141416] shadow-[0_1px_1.5px_rgba(0,0,0,0.05)] hover:border-black/[0.24]"
+                          : "border border-dashed border-black/[0.2] bg-white/75 font-normal text-[#63636C] hover:border-black/[0.34] hover:text-[#2C2C30]"
                     }`}
                   >
                     {isRecording ? (
@@ -175,7 +175,7 @@ export function HotkeysTab({
                       type="button"
                       onClick={() => clearHotkey(row.key)}
                       title="Clear shortcut"
-                      className="flex h-[24px] w-[24px] cursor-pointer items-center justify-center rounded-md text-[#AEAEB2] transition hover:bg-black/[0.06] hover:text-[#3A3A3C]"
+                      className="flex h-[24px] w-[24px] cursor-pointer items-center justify-center rounded-md text-[#63636C] transition hover:bg-black/[0.06] hover:text-[#141416]"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
@@ -184,7 +184,7 @@ export function HotkeysTab({
               </div>
 
               {err && (
-                <div className="mt-0.5 flex items-center gap-1 text-[11px] text-[#FF3B30]">
+                <div className="mt-0.5 flex items-center gap-1 text-[11.5px] font-medium text-[#D70015]">
                   <AlertCircle className="h-3 w-3 shrink-0" />
                   <span className="truncate">{err}</span>
                 </div>
@@ -195,13 +195,13 @@ export function HotkeysTab({
       </div>
 
       <div className="mt-3 flex items-center justify-between gap-3">
-        <span className="text-[11px] leading-snug text-[#86868B]">
+        <span className="text-[11.5px] leading-snug text-[#52525B]">
           MacBook: use Fn+F1 or enable standard F-keys.
         </span>
         <button
           type="button"
           onClick={resetHotkeys}
-          className="mac-btn inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-[6px] px-2.5 py-1 text-[12px] font-medium text-[#1D1D1F] transition"
+          className="mac-btn inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-[6px] px-2.5 py-1 text-[12px] font-medium text-[#141416] transition"
         >
           <RotateCcw className="h-3 w-3" />
           <span>Defaults</span>

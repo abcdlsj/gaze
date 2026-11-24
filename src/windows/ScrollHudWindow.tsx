@@ -63,10 +63,10 @@ export function ScrollHudWindow() {
           </span>
         )}
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex items-center gap-2 text-[12px] font-medium text-[#1D1D1F]">
+          <div className="flex items-center gap-2 text-[12px] font-medium text-[#141416]">
             <span className="truncate">{titleText}</span>
             {!isError && (
-              <span className="shrink-0 tabular-nums text-[#86868B]">
+              <span className="shrink-0 font-normal tabular-nums text-[#52525B]">
                 {progress.frames}f · {progress.height.toLocaleString()} px
               </span>
             )}

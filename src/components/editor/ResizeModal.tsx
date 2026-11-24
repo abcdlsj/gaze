@@ -58,13 +58,13 @@ export function ResizeModal({
         className="w-[300px] rounded-2xl border border-neutral-200 bg-white p-4 shadow-2xl"
       >
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-[13px] font-semibold text-neutral-800">
+          <h3 className="text-[13px] font-semibold text-[#141416]">
             Resize Image (pt)
           </h3>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+            className="rounded-md p-1 text-[#63636C] hover:bg-black/[0.06] hover:text-[#141416]"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -72,13 +72,13 @@ export function ResizeModal({
 
         <div className="flex items-center gap-2">
           <label className="flex flex-1 flex-col gap-1">
-            <span className="text-[11px] text-neutral-500">Width</span>
+            <span className="text-[11.5px] text-[#3F3F46]">Width</span>
             <input
               type="number"
               min={16}
               value={w}
               onChange={(e) => handleW(e.target.value)}
-              className="h-8 rounded-lg border border-neutral-300 px-2.5 text-[13px] tabular-nums outline-none focus:border-[#0A84FF]"
+              className="h-8 rounded-lg border border-black/[0.16] px-2.5 text-[13px] tabular-nums text-[#141416] outline-none focus:border-[#007AFF] focus:ring-[3px] focus:ring-[#007AFF]/20"
             />
           </label>
 
@@ -88,8 +88,8 @@ export function ResizeModal({
             title={lockAspect ? "Aspect ratio locked" : "Aspect ratio unlocked"}
             className={`mt-5 rounded-lg p-1.5 transition ${
               lockAspect
-                ? "bg-[#0A84FF]/10 text-[#0A84FF]"
-                : "text-neutral-400 hover:bg-neutral-100"
+                ? "bg-[#007AFF]/10 text-[#0066D6]"
+                : "text-[#63636C] hover:bg-black/[0.06]"
             }`}
           >
             {lockAspect ? (
@@ -100,13 +100,13 @@ export function ResizeModal({
           </button>
 
           <label className="flex flex-1 flex-col gap-1">
-            <span className="text-[11px] text-neutral-500">Height</span>
+            <span className="text-[11.5px] text-[#3F3F46]">Height</span>
             <input
               type="number"
               min={16}
               value={h}
               onChange={(e) => handleH(e.target.value)}
-              className="h-8 rounded-lg border border-neutral-300 px-2.5 text-[13px] tabular-nums outline-none focus:border-[#0A84FF]"
+              className="h-8 rounded-lg border border-black/[0.16] px-2.5 text-[13px] tabular-nums text-[#141416] outline-none focus:border-[#007AFF] focus:ring-[3px] focus:ring-[#007AFF]/20"
             />
           </label>
         </div>
@@ -120,7 +120,7 @@ export function ResizeModal({
                 setW(String(Math.max(1, Math.round(initW * pct))));
                 setH(String(Math.max(1, Math.round(initH * pct))));
               }}
-              className="flex-1 rounded-md border border-neutral-200 py-1 text-[11px] text-neutral-600 hover:bg-neutral-50"
+              className="flex-1 rounded-md border border-black/[0.11] py-1 text-[11.5px] text-[#2C2C30] hover:bg-black/[0.04]"
             >
               {Math.round(pct * 100)}%
             </button>
@@ -131,14 +131,14 @@ export function ResizeModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-600 hover:bg-neutral-50"
+            className="rounded-lg border border-black/[0.12] px-3 py-1.5 text-[12px] text-[#2C2C30] hover:bg-black/[0.04]"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={submit}
-            className="rounded-lg bg-[#0A84FF] px-3.5 py-1.5 text-[12px] font-medium text-white hover:bg-blue-600"
+            className="mac-blue-fill rounded-lg px-3.5 py-1.5 text-[12px] font-medium text-white antialiased hover:brightness-105"
           >
             Resize
           </button>
