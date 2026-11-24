@@ -87,6 +87,10 @@ export async function showOverlayWindow(): Promise<void> {
   return invoke("show_overlay_window");
 }
 
+export async function revealWindow(focus = true): Promise<void> {
+  return invoke("reveal_window", { focus });
+}
+
 export async function switchOverlayMonitor(
   mode: "area" | "window" | "scrolling",
 ): Promise<void> {

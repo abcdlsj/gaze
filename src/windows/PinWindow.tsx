@@ -1,11 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
-import { Check, Copy, Pencil, X } from "lucide-react";
+import { Check, Copy, SquarePen, X } from "lucide-react";
+import { Tooltip } from "../components/ui/Tooltip";
+import { isMacPlatform } from "../lib/hotkeys";
 import {
   copyCaptureById,
   getCaptureImageBytes,
   getCaptureMeta,
   openEditorForCapture,
+  revealWindow,
 } from "../lib/tauri";
 import type { CaptureMeta } from "../types";
 
@@ -15,6 +18,16 @@ export function PinWindow({ captureId }: { captureId: string }) {
   const [opacity, setOpacity] = useState(1);
   const [scale, setScale] = useState(1);
   const [copied, setCopied] = useState(false);
+  const revealedRef = useRef(false);
+  const modKey = isMacPlatform() ? "⌘" : "Ctrl+";
+
+  const triggerReveal = () => {
+    if (revealedRef.current) return;
+    revealedRef.current = true;
+    setTimeout(() => {
+      void revealWindow(true);
+    }, 16);
+  };
 
   useEffect(() => {
     let active = true;
@@ -92,45 +105,50 @@ export function PinWindow({ captureId }: { captureId: string }) {
           alt="Pinned screenshot"
           draggable={false}
           data-tauri-drag-region
+          onLoad={triggerReveal}
+          onError={triggerReveal}
           className="h-full w-full select-none object-contain"
         />
       )}
 
       {/* Subtle hover controls */}
-      <div className="pointer-events-auto absolute right-2 top-2 flex items-center gap-1 rounded-lg bg-neutral-900/75 p-1 text-white opacity-0 shadow-lg backdrop-blur-md transition group-hover:opacity-100">
-        <button
-          type="button"
-          onClick={() =>
-            void copyCaptureById(captureId).then(() => {
-              setCopied(true);
-              setTimeout(() => setCopied(false), 900);
-            })
-          }
-          title="Copy (⌘C)"
-          className="rounded p-1 transition hover:bg-white/15"
-        >
-          {copied ? (
-            <Check className="h-3.5 w-3.5 text-emerald-400" />
-          ) : (
-            <Copy className="h-3.5 w-3.5" />
-          )}
-        </button>
-        <button
-          type="button"
-          onClick={() => void openEditorForCapture(captureId)}
-          title="Open in Editor"
-          className="rounded p-1 transition hover:bg-white/15"
-        >
-          <Pencil className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={() => void getCurrentWindow().close()}
-          title="Close (Esc)"
-          className="rounded p-1 transition hover:bg-red-500/80"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
+      <div className="pointer-events-auto absolute right-2 top-2 flex items-center gap-0.5 rounded-[9px] bg-[#18181B]/82 p-1 text-white antialiased opacity-0 shadow-[0_8px_24px_rgba(0,0,0,0.35)] ring-1 ring-white/[0.14] backdrop-blur-xl transition-opacity duration-150 group-hover:opacity-100">
+        <Tooltip label="Copy" shortcut={`${modKey}C`} side="bottom">
+          <button
+            type="button"
+            onClick={() =>
+              void copyCaptureById(captureId).then(() => {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 900);
+              })
+            }
+            className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-[6px] transition hover:bg-white/15"
+          >
+            {copied ? (
+              <Check className="h-3.5 w-3.5 stroke-[2] text-emerald-400" />
+            ) : (
+              <Copy className="h-3.5 w-3.5 stroke-[1.8]" />
+            )}
+          </button>
+        </Tooltip>
+        <Tooltip label="Edit" side="bottom">
+          <button
+            type="button"
+            onClick={() => void openEditorForCapture(captureId)}
+            className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-[6px] transition hover:bg-white/15"
+          >
+            <SquarePen className="h-3.5 w-3.5 stroke-[1.8]" />
+          </button>
+        </Tooltip>
+        <Tooltip label="Close" shortcut="Esc" side="bottom" align="right">
+          <button
+            type="button"
+            onClick={() => void getCurrentWindow().close()}
+            className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-[6px] transition hover:bg-red-500/80"
+          >
+            <X className="h-3.5 w-3.5 stroke-[2]" />
+          </button>
+        </Tooltip>
       </div>
 
       {/* Subtle border highlight on hover */}

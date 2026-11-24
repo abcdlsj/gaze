@@ -27,6 +27,7 @@ pub fn prewarm_overlay(app: &AppHandle) {
     .title("Gaze Capture")
     .inner_size(100.0, 100.0)
     .decorations(false)
+    .transparent(true)
     .always_on_top(true)
     .skip_taskbar(true)
     .resizable(false)
@@ -40,6 +41,23 @@ pub fn prewarm_overlay(app: &AppHandle) {
     }
 
     let _ = builder.build();
+}
+
+/// Safety net for windows created with `visible(false)` that reveal themselves once painted:
+/// if JS ever fails to call `reveal_window` within 1.5s, reveal the window so it never stalls.
+fn schedule_reveal_fallback(app: &AppHandle, label: String, focus: bool) {
+    let app_clone = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+        if let Some(win) = app_clone.get_webview_window(&label) {
+            if !win.is_visible().unwrap_or(true) {
+                let _ = win.show();
+                if focus {
+                    let _ = win.set_focus();
+                }
+            }
+        }
+    });
 }
 
 pub fn is_overlay_visible(app: &AppHandle) -> bool {
@@ -126,7 +144,8 @@ pub fn open_editor(
         .title("Gaze")
         .inner_size(win_w, win_h)
         .min_inner_size(min_w, 440.0)
-        .resizable(true);
+        .resizable(true)
+        .visible(false);
 
     if monitor_bounds.is_some() {
         let pos_x = mon_x + ((mon_w - win_w) * 0.5).max(20.0);
@@ -144,10 +163,10 @@ pub fn open_editor(
             .hidden_title(true);
     }
 
-    let win = builder
+    builder
         .build()
         .map_err(|e| format!("Failed to open Editor window: {e}"))?;
-    let _ = win.set_focus();
+    schedule_reveal_fallback(app, label, true);
     Ok(())
 }
 
@@ -211,11 +230,13 @@ pub fn open_overlay(app: &AppHandle, info: &OverlaySessionInfo) -> Result<bool, 
     .position(wx, wy)
     .inner_size(ww, wh)
     .decorations(false)
+    .transparent(true)
     .always_on_top(true)
     .skip_taskbar(true)
     .resizable(false)
     .shadow(false)
-    .focused(true);
+    .visible(false)
+    .focused(false);
 
     #[cfg(target_os = "macos")]
     {
@@ -231,14 +252,15 @@ pub fn open_overlay(app: &AppHandle, info: &OverlaySessionInfo) -> Result<bool, 
         let _ = win.set_size(PhysicalSize::new(info.monitor_width, info.monitor_height));
         let _ = win.set_position(PhysicalPosition::new(info.monitor_x, info.monitor_y));
     }
+    let _ = win;
 
-    let _ = win.set_focus();
     Ok(false)
 }
 
 pub fn close_overlay(app: &AppHandle) {
     if let Some(win) = app.get_webview_window(LABEL_OVERLAY) {
         let _ = win.hide();
+        let _ = app.emit_to(LABEL_OVERLAY, "overlay-hidden", ());
     }
 }
 
@@ -258,18 +280,20 @@ pub fn open_pin(
     let logical_h = ((img_height as f64) / (scale_factor.max(1.0) as f64)).clamp(90.0, 720.0);
     let url = format!("index.html?window=pin&id={capture_id}");
 
-    let win = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()))
+    WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()))
         .title("Pinned Screenshot")
         .inner_size(logical_w, logical_h)
         .min_inner_size(80.0, 60.0)
         .decorations(false)
+        .transparent(true)
         .always_on_top(true)
         .shadow(true)
         .resizable(true)
+        .visible(false)
         .center()
         .build()
         .map_err(|e| format!("Failed to open Pin window: {e}"))?;
-    let _ = win.set_focus();
+    schedule_reveal_fallback(app, label, true);
     Ok(())
 }
 
@@ -287,23 +311,23 @@ pub fn open_thumbnail(
         #[cfg(target_os = "macos")]
         {
             (
-                b.x as f64 + (b.width as f64 - 304.0).max(20.0),
-                b.y as f64 + (b.height as f64 - 236.0).max(56.0),
+                b.x as f64 + (b.width as f64 - 310.0).max(20.0),
+                b.y as f64 + (b.height as f64 - 242.0).max(56.0),
             )
         }
         #[cfg(not(target_os = "macos"))]
         {
             let s = scale_factor.max(1.0) as f64;
             (
-                (b.x as f64 + b.width as f64) / s - 304.0,
-                (b.y as f64 + b.height as f64) / s - 236.0,
+                (b.x as f64 + b.width as f64) / s - 310.0,
+                (b.y as f64 + b.height as f64) / s - 242.0,
             )
         }
     } else if let Ok(Some(mon)) = app.primary_monitor() {
         let scale = mon.scale_factor();
         let w = mon.size().width as f64 / scale;
         let h = mon.size().height as f64 / scale;
-        ((w - 304.0).max(20.0), (h - 236.0).max(56.0))
+        ((w - 310.0).max(20.0), (h - 242.0).max(56.0))
     } else {
         (960.0, 620.0)
     };
@@ -311,15 +335,19 @@ pub fn open_thumbnail(
     let url = format!("index.html?window=thumbnail&id={capture_id}");
     WebviewWindowBuilder::new(app, LABEL_THUMBNAIL, WebviewUrl::App(url.into()))
         .title("Gaze Preview")
-        .inner_size(284.0, 196.0)
+        .inner_size(290.0, 202.0)
         .position(px, py)
         .decorations(false)
+        .transparent(true)
         .always_on_top(true)
         .skip_taskbar(true)
         .shadow(true)
         .resizable(false)
+        .visible(false)
+        .focused(false)
         .build()
         .map_err(|e| format!("Failed to open Thumbnail preview: {e}"))?;
+    schedule_reveal_fallback(app, LABEL_THUMBNAIL.to_string(), false);
     Ok(())
 }
 
@@ -418,6 +446,7 @@ pub fn open_scroll_hud(
     .inner_size(hud_w, hud_h)
     .position(x, y)
     .decorations(false)
+    .transparent(true)
     .always_on_top(true)
     .skip_taskbar(true)
     .shadow(true)

@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { listen } from "@tauri-apps/api/event";
 import {
   AppWindow,
-  Check,
   Copy,
   Crop,
   Monitor,
   Pin,
   Save,
   ScrollText,
+  SquarePen,
   X,
 } from "lucide-react";
+import { Tooltip } from "../components/ui/Tooltip";
+import { isMacPlatform } from "../lib/hotkeys";
 import {
   cancelOverlay,
   completeAreaSelection,
@@ -87,12 +90,28 @@ export function OverlayWindow() {
     origRect: Rect;
   } | null>(null);
 
+  const resetOverlayVisuals = useCallback(() => {
+    dragStateRef.current = null;
+    rawPixelsRef.current = null;
+    if (loupeWrapRef.current) {
+      loupeWrapRef.current.style.opacity = "0";
+    }
+    const canvas = bgCanvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+    setSelection(null);
+    setHoveredWindow(null);
+    setIsDragging(false);
+    setReady(false);
+  }, []);
+
   const loadSessionSnapshot = useCallback(
     async (incomingInfo?: OverlaySessionInfo) => {
       try {
-        setSelection(null);
-        setHoveredWindow(null);
-        setIsDragging(false);
         dragStateRef.current = null;
         if (loupeWrapRef.current) {
           loupeWrapRef.current.style.opacity = "0";
@@ -103,9 +122,6 @@ export function OverlayWindow() {
           getOverlayImageRaw(),
         ]);
 
-        setSession(info);
-        setMode(info.initial_mode);
-        setWindowsList(info.windows);
         rawPixelsRef.current = {
           w: raw.width,
           h: raw.height,
@@ -119,18 +135,30 @@ export function OverlayWindow() {
           const ctx = canvas.getContext("2d");
           if (ctx) {
             const imgData = new ImageData(
-              new Uint8ClampedArray(raw.data),
+              raw.data as Uint8ClampedArray<ArrayBuffer>,
               raw.width,
               raw.height,
             );
             ctx.putImageData(imgData, 0, 0);
+            // Force synchronous backing-store flush before revealing the window.
+            ctx.getImageData(0, 0, 1, 1);
           }
         }
 
-        setReady(true);
-        // Show pre-warmed window immediately after ctx.putImageData commits the pixels.
-        // Do NOT wrap in requestAnimationFrame: macOS WKWebView suspends rAF on hidden
-        // (visible: false) windows, which would permanently prevent the overlay from showing.
+        // Commit React DOM updates synchronously so no stale selection or mode ever flashes.
+        flushSync(() => {
+          setSelection(null);
+          setHoveredWindow(null);
+          setIsDragging(false);
+          setSession(info);
+          setMode(info.initial_mode);
+          setWindowsList(info.windows);
+          setReady(true);
+        });
+
+        // Yield one short tick (not rAF, which macOS WKWebView suspends on hidden windows)
+        // so WebKit composites the fresh canvas & DOM into the CALayer before NSWindow maps.
+        await new Promise<void>((resolve) => setTimeout(resolve, 24));
         await showOverlayWindow();
       } catch (err) {
         if (incomingInfo) {
@@ -142,32 +170,38 @@ export function OverlayWindow() {
     [],
   );
 
-  // Register listener FIRST, then check for an already-active session so there is zero startup race
+  // Register listeners FIRST, then check for an already-active session so there is zero startup race
   useEffect(() => {
     let active = true;
-    let unlisten: (() => void) | null = null;
+    let unlistenReady: (() => void) | null = null;
+    let unlistenHidden: (() => void) | null = null;
 
     void (async () => {
-      const fn = await listen<OverlaySessionInfo>(
-        "overlay-session-ready",
-        (event) => {
+      const [fnReady, fnHidden] = await Promise.all([
+        listen<OverlaySessionInfo>("overlay-session-ready", (event) => {
           void loadSessionSnapshot(event.payload);
-        },
-      );
+        }),
+        listen("overlay-hidden", () => {
+          resetOverlayVisuals();
+        }),
+      ]);
       if (!active) {
-        fn();
+        fnReady();
+        fnHidden();
         return;
       }
-      unlisten = fn;
+      unlistenReady = fnReady;
+      unlistenHidden = fnHidden;
       await loadSessionSnapshot();
     })();
 
     return () => {
       active = false;
-      if (unlisten) unlisten();
+      if (unlistenReady) unlistenReady();
+      if (unlistenHidden) unlistenHidden();
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
-  }, [loadSessionSnapshot]);
+  }, [loadSessionSnapshot, resetOverlayVisuals]);
 
   // Lazy-fetch window list only when switching to Window mode
   useEffect(() => {
@@ -517,11 +551,13 @@ export function OverlayWindow() {
 
   const winBox = hoveredWindow ? monitorToCss(hoveredWindow) : null;
 
+  const modKey = isMacPlatform() ? "⌘" : "Ctrl+";
+
   const actionBarPos = useMemo(() => {
     if (!selection || isDragging || selection.w < 6 || selection.h < 6) {
       return null;
     }
-    const barW = 366;
+    const barW = 408;
     const barH = 42;
     const left = Math.max(
       14,
@@ -533,13 +569,16 @@ export function OverlayWindow() {
       belowY + barH < window.innerHeight - 14
         ? Math.max(54, belowY)
         : Math.max(54, selection.y - barH - 10);
-    return { left, top };
+    const tooltipSide: "top" | "bottom" =
+      top + barH + 40 < window.innerHeight ? "bottom" : "top";
+    return { left, top, tooltipSide };
   }, [selection, isDragging]);
 
   const hideLoupe = !ready || (selection !== null && !isDragging);
 
   return (
     <div
+      style={{ opacity: ready ? 1 : 0 }}
       className={`relative h-full w-full overflow-hidden ${
         mode === "window" ? "cursor-pointer" : "cursor-crosshair"
       }`}
@@ -568,67 +607,79 @@ export function OverlayWindow() {
       />
 
       {/* Frosted glass top mode switcher pill — placed at top-14 (56px) safely below macOS Menu Bar & Notch */}
-      {!isDragging && !selection && (
+      {ready && !isDragging && !selection && (
         <div
           onMouseDown={(e) => e.stopPropagation()}
-          className="animate-pop-in absolute left-1/2 top-14 z-30 flex max-w-[calc(100vw-32px)] -translate-x-1/2 items-center gap-1 rounded-full bg-[#1C1C1E]/86 p-1 text-[12px] text-white antialiased shadow-[0_10px_32px_rgba(0,0,0,0.34)] ring-1 ring-white/15 backdrop-blur-xl"
+          className="animate-pop-in absolute left-1/2 top-14 z-30 flex max-w-[calc(100vw-32px)] -translate-x-1/2 items-center gap-0.5 rounded-full bg-[#161618]/88 p-[4px] text-[12px] text-white antialiased shadow-[0_12px_34px_-4px_rgba(0,0,0,0.42),inset_0_0.5px_0_rgba(255,255,255,0.14)] ring-1 ring-white/[0.14] backdrop-blur-2xl"
         >
           <button
             type="button"
             onClick={() => setMode("area")}
-            className={`flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1 transition ${
+            className={`flex h-[28px] cursor-pointer items-center gap-1.5 rounded-full px-3 tracking-[-0.01em] transition-all duration-100 ${
               mode === "area"
-                ? "bg-[#007AFF] font-medium text-white shadow-xs"
-                : "text-white/75 hover:text-white"
+                ? "mac-blue-fill font-medium text-white"
+                : "text-white/75 hover:bg-white/[0.08] hover:text-white"
             }`}
           >
-            <Crop className="h-3.5 w-3.5" />
+            <Crop className="h-[13.5px] w-[13.5px] stroke-[1.9]" />
             <span>Area</span>
           </button>
           <button
             type="button"
             onClick={() => setMode("window")}
-            className={`flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1 transition ${
+            className={`flex h-[28px] cursor-pointer items-center gap-1.5 rounded-full px-3 tracking-[-0.01em] transition-all duration-100 ${
               mode === "window"
-                ? "bg-[#007AFF] font-medium text-white shadow-xs"
-                : "text-white/75 hover:text-white"
+                ? "mac-blue-fill font-medium text-white"
+                : "text-white/75 hover:bg-white/[0.08] hover:text-white"
             }`}
           >
-            <AppWindow className="h-3.5 w-3.5" />
+            <AppWindow className="h-[13.5px] w-[13.5px] stroke-[1.9]" />
             <span>Window</span>
           </button>
           <button
             type="button"
             onClick={() => setMode("scrolling")}
-            className={`flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1 transition ${
+            className={`flex h-[28px] cursor-pointer items-center gap-1.5 rounded-full px-3 tracking-[-0.01em] transition-all duration-100 ${
               mode === "scrolling"
-                ? "bg-[#007AFF] font-medium text-white shadow-xs"
-                : "text-white/75 hover:text-white"
+                ? "mac-blue-fill font-medium text-white"
+                : "text-white/75 hover:bg-white/[0.08] hover:text-white"
             }`}
           >
-            <ScrollText className="h-3.5 w-3.5" />
+            <ScrollText className="h-[13.5px] w-[13.5px] stroke-[1.9]" />
             <span>Scroll</span>
           </button>
           {session && session.monitor_count > 1 && (
             <>
-              <span className="mx-0.5 h-3.5 w-px bg-white/15" />
-              <button
-                type="button"
-                onClick={() => void switchOverlayMonitor(mode)}
-                title="Switch Display (D)"
-                className="flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-1 text-white/85 transition hover:bg-white/12 hover:text-white"
-              >
-                <Monitor className="h-3.5 w-3.5" />
-                <span className="tabular-nums">
-                  {session.monitor_index + 1}/{session.monitor_count}
-                </span>
-              </button>
+              <span className="mx-1 h-3.5 w-px bg-white/[0.14]" />
+              <Tooltip label="Switch Display" shortcut="D" side="bottom">
+                <button
+                  type="button"
+                  onClick={() => void switchOverlayMonitor(mode)}
+                  className="flex h-[28px] cursor-pointer items-center gap-1.5 rounded-full px-2.5 text-white/85 transition hover:bg-white/[0.1] hover:text-white"
+                >
+                  <Monitor className="h-[13.5px] w-[13.5px] stroke-[1.8]" />
+                  <span className="font-mono text-[11px] tabular-nums">
+                    {session.monitor_index + 1}/{session.monitor_count}
+                  </span>
+                </button>
+              </Tooltip>
             </>
           )}
-          <span className="mx-1 h-3.5 w-px bg-white/15" />
-          <span className="whitespace-nowrap px-2 text-[11px] text-white/55">
-            Tab: Color · Esc: Cancel
-          </span>
+          <span className="mx-1 h-3.5 w-px bg-white/[0.14]" />
+          <div className="flex items-center gap-2.5 whitespace-nowrap px-2 text-[11px] text-white/65">
+            <span className="inline-flex items-center gap-1">
+              <kbd className="rounded-[4px] bg-white/[0.13] px-1.5 py-[1.5px] font-mono text-[10px] font-medium leading-none text-white/85">
+                Tab
+              </kbd>
+              <span>Color</span>
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <kbd className="rounded-[4px] bg-white/[0.13] px-1.5 py-[1.5px] font-mono text-[10px] font-medium leading-none text-white/85">
+                Esc
+              </kbd>
+              <span>Cancel</span>
+            </span>
+          </div>
         </div>
       )}
 
@@ -644,10 +695,14 @@ export function OverlayWindow() {
             boxShadow: "0 0 0 9999px rgba(0, 0, 0, 0.28)",
           }}
         >
-          <div className="absolute left-2.5 top-2.5 rounded-lg bg-[#1C1C1E]/88 px-2.5 py-1 text-[11.5px] font-medium text-white shadow-lg ring-1 ring-white/15 backdrop-blur-md">
-            {hoveredWindow.app_name}
-            {hoveredWindow.title ? ` — ${hoveredWindow.title}` : ""} ·{" "}
-            {hoveredWindow.width}×{hoveredWindow.height}
+          <div className="absolute left-2.5 top-2.5 flex max-w-[380px] items-center gap-1.5 rounded-[8px] bg-[#161618]/88 px-2.5 py-1 text-[11.5px] font-medium tracking-[-0.01em] text-white/95 antialiased shadow-[0_6px_20px_rgba(0,0,0,0.34)] ring-1 ring-white/[0.14] backdrop-blur-xl">
+            <span className="truncate">
+              {hoveredWindow.app_name}
+              {hoveredWindow.title ? ` — ${hoveredWindow.title}` : ""}
+            </span>
+            <span className="shrink-0 font-mono text-[10.5px] font-normal tabular-nums text-white/60">
+              {hoveredWindow.width}×{hoveredWindow.height}
+            </span>
           </div>
         </div>
       )}
@@ -674,12 +729,15 @@ export function OverlayWindow() {
         >
           {/* Dimension pill — flips inside selection when near top edge so it never clips off-screen */}
           <div
-            className={`pointer-events-none absolute left-0 flex items-center gap-1.5 rounded-md bg-[#1C1C1E]/86 px-2 py-0.5 text-[11px] font-medium tabular-nums text-white shadow ring-1 ring-white/15 backdrop-blur-md ${
+            className={`pointer-events-none absolute left-0 flex items-center rounded-[7px] bg-[#161618]/88 px-2 py-[3px] font-mono text-[11px] font-medium tabular-nums tracking-[-0.01em] text-white/95 antialiased shadow-[0_6px_18px_rgba(0,0,0,0.3)] ring-1 ring-white/[0.14] backdrop-blur-xl ${
               selection.y < 52 ? "left-2 top-2" : "-top-7"
             }`}
           >
             <span>
-              {Math.round(selection.w)} × {Math.round(selection.h)} pt
+              {Math.round(selection.w)} × {Math.round(selection.h)}
+            </span>
+            <span className="ml-1 font-sans text-[10px] font-normal text-white/55">
+              pt
             </span>
           </div>
 
@@ -710,65 +768,95 @@ export function OverlayWindow() {
         <div
           onMouseDown={(e) => e.stopPropagation()}
           style={{ left: actionBarPos.left, top: actionBarPos.top }}
-          className="animate-pop-in absolute z-30 flex items-center gap-0.5 rounded-xl border border-black/[0.08] bg-white/94 p-1 shadow-[0_12px_36px_rgba(0,0,0,0.22)] backdrop-blur-xl"
+          className="animate-pop-in absolute z-30 flex items-center gap-0.5 rounded-[13px] bg-white/93 p-[5px] shadow-[0_14px_38px_-6px_rgba(0,0,0,0.28),0_2px_8px_rgba(0,0,0,0.1),inset_0_0.5px_0_rgba(255,255,255,0.95)] ring-1 ring-black/[0.09] backdrop-blur-2xl"
         >
-          <button
-            type="button"
-            onClick={() => void commitSelection("copy")}
-            title="Copy to Clipboard (⌘C)"
-            className="flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-[#1D1D1F] transition hover:bg-black/[0.06]"
+          <Tooltip
+            label="Copy to Clipboard"
+            shortcut={`${modKey}C`}
+            side={actionBarPos.tooltipSide}
+            align="left"
           >
-            <Copy className="h-3.5 w-3.5" />
-            <span>Copy</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => void commitSelection("save")}
-            title="Save to Folder (⌘S)"
-            className="flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-[#1D1D1F] transition hover:bg-black/[0.06]"
+            <button
+              type="button"
+              onClick={() => void commitSelection("copy")}
+              className="group flex h-[30px] cursor-pointer items-center gap-1.5 rounded-[8px] px-2.5 text-[12px] font-medium tracking-[-0.01em] text-[#1C1C1F] transition-all duration-100 hover:bg-black/[0.06] hover:text-[#09090B] active:scale-[0.97]"
+            >
+              <Copy className="h-[14px] w-[14px] stroke-[1.8] text-[#52525B] transition-colors group-hover:text-[#141416]" />
+              <span>Copy</span>
+            </button>
+          </Tooltip>
+          <Tooltip
+            label="Save to Folder"
+            shortcut={`${modKey}S`}
+            side={actionBarPos.tooltipSide}
           >
-            <Save className="h-3.5 w-3.5" />
-            <span>Save</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => void commitSelection("pin")}
-            title="Pin on Screen"
-            className="flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-[#1D1D1F] transition hover:bg-black/[0.06]"
+            <button
+              type="button"
+              onClick={() => void commitSelection("save")}
+              className="group flex h-[30px] cursor-pointer items-center gap-1.5 rounded-[8px] px-2.5 text-[12px] font-medium tracking-[-0.01em] text-[#1C1C1F] transition-all duration-100 hover:bg-black/[0.06] hover:text-[#09090B] active:scale-[0.97]"
+            >
+              <Save className="h-[14px] w-[14px] stroke-[1.8] text-[#52525B] transition-colors group-hover:text-[#141416]" />
+              <span>Save</span>
+            </button>
+          </Tooltip>
+          <Tooltip label="Pin on Screen" side={actionBarPos.tooltipSide}>
+            <button
+              type="button"
+              onClick={() => void commitSelection("pin")}
+              className="group flex h-[30px] cursor-pointer items-center gap-1.5 rounded-[8px] px-2.5 text-[12px] font-medium tracking-[-0.01em] text-[#1C1C1F] transition-all duration-100 hover:bg-black/[0.06] hover:text-[#09090B] active:scale-[0.97]"
+            >
+              <Pin className="h-[14px] w-[14px] stroke-[1.8] text-[#52525B] transition-colors group-hover:text-[#141416]" />
+              <span>Pin</span>
+            </button>
+          </Tooltip>
+          <Tooltip
+            label="Scrolling Capture"
+            side={actionBarPos.tooltipSide}
           >
-            <Pin className="h-3.5 w-3.5" />
-            <span>Pin</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => void launchScroll(selection)}
-            title="Auto-Scroll Long Screenshot"
-            className="flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-[#1D1D1F] transition hover:bg-black/[0.06]"
+            <button
+              type="button"
+              onClick={() => void launchScroll(selection)}
+              className="group flex h-[30px] cursor-pointer items-center gap-1.5 rounded-[8px] px-2.5 text-[12px] font-medium tracking-[-0.01em] text-[#1C1C1F] transition-all duration-100 hover:bg-black/[0.06] hover:text-[#09090B] active:scale-[0.97]"
+            >
+              <ScrollText className="h-[14px] w-[14px] stroke-[1.8] text-[#52525B] transition-colors group-hover:text-[#141416]" />
+              <span>Scroll</span>
+            </button>
+          </Tooltip>
+
+          <span className="mx-1 h-[18px] w-px bg-black/[0.09]" />
+
+          <Tooltip
+            label="Open in Editor"
+            shortcut="↵"
+            side={actionBarPos.tooltipSide}
           >
-            <ScrollText className="h-3.5 w-3.5" />
-            <span>Scroll</span>
-          </button>
-          <span className="mx-0.5 h-4 w-px bg-black/[0.08]" />
-          <button
-            type="button"
-            onClick={() => void commitSelection("default")}
-            title="Open in Editor (Enter)"
-            className="mac-blue-fill flex cursor-pointer items-center gap-1 rounded-lg px-3 py-1.5 text-[12px] font-medium text-white transition hover:brightness-105"
+            <button
+              type="button"
+              onClick={() => void commitSelection("default")}
+              className="mac-blue-fill flex h-[30px] cursor-pointer items-center gap-1.5 rounded-[8px] px-3 text-[12px] font-medium tracking-[-0.01em] text-white antialiased transition-all duration-100 hover:brightness-105 active:scale-[0.97]"
+            >
+              <SquarePen className="h-[14px] w-[14px] stroke-[1.9]" />
+              <span>Edit</span>
+            </button>
+          </Tooltip>
+          <Tooltip
+            label="Cancel"
+            shortcut="Esc"
+            side={actionBarPos.tooltipSide}
+            align="right"
           >
-            <Check className="h-3.5 w-3.5" />
-            <span>Edit</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setSelection(null);
-              void cancelOverlay();
-            }}
-            title="Cancel (Esc)"
-            className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg text-[#86868B] transition hover:bg-black/[0.06] hover:text-[#1D1D1F]"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSelection(null);
+                void cancelOverlay();
+              }}
+              aria-label="Cancel screenshot"
+              className="flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-[8px] text-[#71717A] transition-all duration-100 hover:bg-black/[0.06] hover:text-[#141416] active:scale-[0.95]"
+            >
+              <X className="h-[14.5px] w-[14.5px] stroke-[1.9]" />
+            </button>
+          </Tooltip>
         </div>
       )}
 
@@ -780,7 +868,7 @@ export function OverlayWindow() {
           display: hideLoupe ? "none" : "block",
           willChange: "transform",
         }}
-        className="pointer-events-none fixed left-0 top-0 z-30 w-[132px] overflow-hidden rounded-xl bg-[#1C1C1E]/90 antialiased shadow-[0_12px_36px_rgba(0,0,0,0.4)] ring-1 ring-white/20 backdrop-blur-md"
+        className="pointer-events-none fixed left-0 top-0 z-30 w-[132px] overflow-hidden rounded-xl bg-[#161618]/92 antialiased shadow-[0_12px_36px_rgba(0,0,0,0.42)] ring-1 ring-white/[0.18] backdrop-blur-xl"
       >
         <canvas
           ref={loupeCanvasRef}
@@ -797,13 +885,15 @@ export function OverlayWindow() {
             />
             <span ref={loupeHexRef}>#000000</span>
           </span>
-          <span className="text-[10px] text-white/50">Tab</span>
+          <kbd className="rounded-[3px] bg-white/[0.14] px-1 py-[1px] font-mono text-[9.5px] leading-none text-white/75">
+            Tab
+          </kbd>
         </div>
       </div>
 
       {/* Subtle toast feedback */}
       {toast && (
-        <div className="animate-pop-in pointer-events-none absolute bottom-8 left-1/2 z-40 -translate-x-1/2 rounded-full bg-[#1C1C1E]/90 px-4 py-1.5 text-[12px] font-medium text-white shadow-xl ring-1 ring-white/15 backdrop-blur-md">
+        <div className="animate-pop-in pointer-events-none absolute bottom-8 left-1/2 z-40 -translate-x-1/2 rounded-full bg-[#161618]/92 px-4 py-1.5 text-[12px] font-medium tracking-[-0.01em] text-white antialiased shadow-xl ring-1 ring-white/[0.14] backdrop-blur-xl">
           {toast}
         </div>
       )}

@@ -163,6 +163,21 @@ input[type="range"].gaze-slider::-webkit-slider-thumb:active {
   animation: gazePopIn 0.14s cubic-bezier(0.2, 0.85, 0.3, 1) forwards;
 }
 
+@keyframes gazeTooltipIn {
+  from {
+    opacity: 0;
+    transform: translateY(3px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-tooltip-in {
+  animation: gazeTooltipIn 0.11s cubic-bezier(0.2, 0.85, 0.3, 1) forwards;
+}
+
 /* Custom subtle scrollbars */
 ::-webkit-scrollbar {
   width: 6px;

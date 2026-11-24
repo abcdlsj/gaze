@@ -114,26 +114,22 @@ pub fn start_overlay_capture_on_monitor(
     let info = session.info();
     state.store.lock().overlay = Some(session);
     let seq = state.overlay_seq.fetch_add(1, Ordering::SeqCst) + 1;
-    let reused = windows::open_overlay(app, &info)?;
-    if reused {
-        // Safety fallback: if the pre-warmed webview didn't call show_overlay_window within 220ms
-        // (e.g. still initializing on first boot), show & focus it directly so capture never stalls.
-        let app_clone = app.clone();
-        let state_clone = state.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(220));
-            if state_clone.overlay_shown_seq.load(Ordering::SeqCst) < seq
-                && state_clone.store.lock().overlay.is_some()
-            {
-                if let Some(win) = app_clone.get_webview_window(windows::LABEL_OVERLAY) {
-                    let _ = win.show();
-                    let _ = win.set_focus();
-                }
+    let _reused = windows::open_overlay(app, &info)?;
+    // Dead-man safety net: wait generously (1500ms) so waking from macOS App Nap never races
+    // with `OverlayWindow` painting the fresh desktop snapshot before calling `show_overlay_window`.
+    let app_clone = app.clone();
+    let state_clone = state.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+        if state_clone.overlay_shown_seq.load(Ordering::SeqCst) < seq
+            && state_clone.store.lock().overlay.is_some()
+        {
+            if let Some(win) = app_clone.get_webview_window(windows::LABEL_OVERLAY) {
+                let _ = win.show();
+                let _ = win.set_focus();
             }
-        });
-    } else {
-        state.overlay_shown_seq.store(seq, Ordering::SeqCst);
-    }
+        }
+    });
     Ok(())
 }
 
@@ -353,11 +349,22 @@ fn get_overlay_windows(
 
 #[tauri::command]
 fn show_overlay_window(app: AppHandle, state: State<'_, Arc<AppState>>) {
+    if state.store.lock().overlay.is_none() {
+        return;
+    }
     let seq = state.overlay_seq.load(Ordering::SeqCst);
     state.overlay_shown_seq.store(seq, Ordering::SeqCst);
     if let Some(win) = app.get_webview_window(windows::LABEL_OVERLAY) {
         let _ = win.show();
         let _ = win.set_focus();
+    }
+}
+
+#[tauri::command]
+fn reveal_window(window: tauri::WebviewWindow, focus: bool) {
+    let _ = window.show();
+    if focus {
+        let _ = window.set_focus();
     }
 }
 
@@ -713,6 +720,7 @@ pub fn run() {
             get_overlay_image_raw,
             get_overlay_windows,
             show_overlay_window,
+            reveal_window,
             switch_overlay_monitor,
             cancel_overlay,
             complete_area_selection,

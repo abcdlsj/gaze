@@ -1,17 +1,27 @@
 import { type RefObject, useEffect, useRef, useState } from "react";
 import {
+  ArrowUpRight,
   Circle,
-  Grid2x2,
-  Hash,
-  Minus,
+  Copy,
+  Crop,
+  Ellipsis,
+  Grid3x3,
+  MousePointer2,
+  Pencil,
+  Pin,
   Redo2,
+  Ruler,
   Save,
   Settings,
+  Slash,
+  Square,
   Trash2,
+  Type,
   Undo2,
 } from "lucide-react";
 import { isMacPlatform } from "../../lib/hotkeys";
 import type { EditorTool } from "../../types";
+import { Tooltip } from "../ui/Tooltip";
 
 interface Props {
   activeTool: EditorTool;
@@ -39,175 +49,66 @@ interface Props {
   backdropEnabled: boolean;
 }
 
-/* Uniform 1.45px SF-Symbols-grade icons faithfully inspired by Reference Image 2 */
-const svgProps = {
-  viewBox: "0 0 20 20",
-  fill: "none",
-  stroke: "currentColor",
-  strokeWidth: 1.45,
-  strokeLinecap: "round" as const,
-  strokeLinejoin: "round" as const,
-  className: "h-[18px] w-[18px]",
-};
-
-function CopyIcon() {
-  return (
-    <svg {...svgProps}>
-      <rect x="6.8" y="6.2" width="8.4" height="10.4" rx="1.6" />
-      <path d="M12.5 6.2V4.8a1.4 1.4 0 0 0-1.4-1.4H5.4A1.4 1.4 0 0 0 4 4.8v8.4a1.4 1.4 0 0 0 1.4 1.4h1.4" />
-    </svg>
-  );
-}
-
-function SaveIcon() {
-  return (
-    <svg {...svgProps}>
-      <path d="M4.2 4.8A1.3 1.3 0 0 1 5.5 3.5h7.6L16.5 6.9v8.3a1.3 1.3 0 0 1-1.3 1.3H5.5a1.3 1.3 0 0 1-1.3-1.3V4.8Z" />
-      <path d="M7.2 3.5v4h5v-4" />
-      <rect x="7" y="11" width="6" height="5.5" rx="0.8" />
-    </svg>
-  );
-}
-
-function PinIcon() {
-  return (
-    <svg {...svgProps}>
-      <path d="M12.6 3.6 16.4 7.4l-1.3 1.3-1.1-.4-2.8 2.8.5 2.4-1.2 1.2-2.7-2.7-3.4 3.4M7.8 12l-2.7-2.7 1.2-1.2 2.4.5 2.8-2.8-.4-1.1 1.5-1.1" />
-    </svg>
-  );
-}
-
-function CropExpandIcon() {
-  return (
-    <svg {...svgProps}>
-      <rect x="6.8" y="4" width="6.4" height="12" rx="1.2" />
-      <circle cx="3.8" cy="6.2" r="0.7" fill="currentColor" stroke="none" />
-      <circle cx="3.8" cy="10" r="0.7" fill="currentColor" stroke="none" />
-      <circle cx="3.8" cy="13.8" r="0.7" fill="currentColor" stroke="none" />
-      <circle cx="16.2" cy="6.2" r="0.7" fill="currentColor" stroke="none" />
-      <circle cx="16.2" cy="10" r="0.7" fill="currentColor" stroke="none" />
-      <circle cx="16.2" cy="13.8" r="0.7" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-function SelectCursorIcon() {
-  return (
-    <svg {...svgProps}>
-      <path
-        d="M5 3.8v11.4l3-2.9 1.8 3.6 1.6-.8-1.8-3.6h4.2L5 3.8Z"
-        fill="currentColor"
-        stroke="none"
-      />
-      <path d="M14.5 11.8v4.4M12.3 14h4.4" strokeWidth="1.35" />
-    </svg>
-  );
-}
-
-function ArrowToolIcon() {
-  return (
-    <svg {...svgProps}>
-      <path d="M5.2 4.8 14.8 10l-4.2 1.1L9.5 15.3 5.2 4.8Z" />
-    </svg>
-  );
-}
-
-function SerifTextIcon() {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" className="h-[18px] w-[18px]">
-      <text
-        x="10"
-        y="15.2"
-        textAnchor="middle"
-        fill="currentColor"
-        fontSize="15.5"
-        fontWeight="500"
-        fontFamily="Georgia, 'Times New Roman', serif"
-      >
-        T
-      </text>
-    </svg>
-  );
-}
-
-function RulerMeasureIcon() {
+/* Crisp custom icons matching Lucide 1.75 stroke weight for tools with unique screenshot semantics */
+function BackdropFrameIcon() {
   return (
     <svg
       viewBox="0 0 20 20"
       fill="none"
-      className="h-[18px] w-[18px]"
       stroke="currentColor"
-      strokeWidth="1.35"
+      strokeWidth={1.65}
       strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-[17px] w-[17px]"
     >
-      <text
-        x="10"
-        y="9.4"
-        textAnchor="middle"
-        fill="currentColor"
-        stroke="none"
-        fontSize="8.5"
-        fontWeight="600"
-        fontFamily="-apple-system, BlinkMacSystemFont, sans-serif"
-      >
-        12
-      </text>
-      <line x1="3.5" y1="14.2" x2="16.5" y2="14.2" />
-      <line x1="3.5" y1="11.8" x2="3.5" y2="16.6" />
-      <line x1="16.5" y1="11.8" x2="16.5" y2="16.6" />
-    </svg>
-  );
-}
-
-function RectToolIcon() {
-  return (
-    <svg {...svgProps}>
-      <rect x="4" y="4.8" width="12" height="10.4" rx="1.6" />
-    </svg>
-  );
-}
-
-function FrameToolIcon() {
-  return (
-    <svg {...svgProps}>
-      <rect x="4.2" y="4.8" width="11.6" height="10.4" rx="2.6" />
+      <rect x="2.5" y="3.2" width="15" height="13.6" rx="2.6" />
       <rect
-        x="6.8"
-        y="7.4"
-        width="6.4"
-        height="5.2"
-        rx="1"
-        strokeWidth="1.15"
+        x="5.6"
+        y="6.2"
+        width="8.8"
+        height="7.6"
+        rx="1.2"
+        fill="currentColor"
+        fillOpacity={0.14}
       />
     </svg>
   );
 }
 
-function PenToolIcon() {
+function MosaicBlurIcon() {
   return (
-    <svg {...svgProps}>
-      <path d="M13.6 4.2a1.7 1.7 0 0 1 2.4 2.4L7.8 14.8l-3.4.9.9-3.4 8.3-8.1Z" />
-      <path d="m11.8 6 2.4 2.4" />
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-[17px] w-[17px]"
+    >
+      <rect x="3" y="3" width="14" height="14" rx="2.5" />
+      <rect x="5.4" y="5.4" width="3" height="3" rx="0.4" fill="currentColor" stroke="none" />
+      <rect x="11.6" y="5.4" width="3" height="3" rx="0.4" fill="currentColor" stroke="none" />
+      <rect x="8.5" y="8.5" width="3" height="3" rx="0.4" fill="currentColor" stroke="none" />
+      <rect x="5.4" y="11.6" width="3" height="3" rx="0.4" fill="currentColor" stroke="none" />
+      <rect x="11.6" y="11.6" width="3" height="3" rx="0.4" fill="currentColor" stroke="none" />
     </svg>
   );
 }
 
-function BlurRedactIcon() {
+function StepCounterIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
   return (
-    <svg {...svgProps}>
-      <circle cx="7.4" cy="12.6" r="2.6" />
-      <circle cx="13.8" cy="6.2" r="1.8" />
-      <path d="m9.4 10.6 3.1-3.1" />
-    </svg>
-  );
-}
-
-function MoreDotsIcon() {
-  return (
-    <svg viewBox="0 0 20 20" fill="currentColor" className="h-[18px] w-[18px]">
-      <circle cx="5.5" cy="10" r="1.25" />
-      <circle cx="10" cy="10" r="1.25" />
-      <circle cx="14.5" cy="10" r="1.25" />
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.65}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <circle cx="10" cy="10" r="7.2" />
+      <path d="M8.7 7.6 10.4 6.5v7M8.8 13.5h3.1" strokeWidth={1.6} />
     </svg>
   );
 }
@@ -242,6 +143,7 @@ export function EditorToolbar({
   const moreRef = useRef<HTMLDivElement | null>(null);
   const zoomRef = useRef<HTMLDivElement | null>(null);
   const isMac = isMacPlatform();
+  const modKey = isMac ? "⌘" : "Ctrl+";
 
   useEffect(() => {
     const onDocClick = (e: MouseEvent) => {
@@ -256,11 +158,13 @@ export function EditorToolbar({
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
+  const iconCls = "h-[16.5px] w-[16.5px] stroke-[1.75]";
+
   const iconBtn = (active = false) =>
     `flex h-[32px] w-[32px] cursor-pointer items-center justify-center rounded-[7px] transition-all duration-100 ${
       active
-        ? "bg-black/[0.1] text-[#141416] shadow-[inset_0_0.5px_1px_rgba(0,0,0,0.07)]"
-        : "text-[#1E1E22] hover:bg-black/[0.06] hover:text-black active:scale-[0.96]"
+        ? "bg-[#007AFF]/[0.11] text-[#0066D6] shadow-[inset_0_0_0_1px_rgba(0,122,255,0.18)]"
+        : "text-[#27272A] hover:bg-black/[0.06] hover:text-[#09090B] active:scale-[0.95]"
     }`;
 
   return (
@@ -272,129 +176,140 @@ export function EditorToolbar({
     >
       {/* Left: Primary Actions + Crop */}
       <div className="flex items-center gap-0.5">
-        <button
-          type="button"
-          onClick={onCopy}
-          title="Copy to Clipboard (⌘C)"
-          className={iconBtn(false)}
-        >
-          <CopyIcon />
-        </button>
-        <button
-          type="button"
-          onClick={onSave}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            onSaveAs();
-          }}
-          title="Save Screenshot (⌘S · ⌘⇧S Save As)"
-          className={iconBtn(false)}
-        >
-          <SaveIcon />
-        </button>
-        <button
-          type="button"
-          onClick={onPin}
-          title="Pin Floating Window"
-          className={iconBtn(false)}
-        >
-          <PinIcon />
-        </button>
+        <Tooltip label="Copy" shortcut={`${modKey}C`} align="left">
+          <button type="button" onClick={onCopy} className={iconBtn(false)}>
+            <Copy className={iconCls} />
+          </button>
+        </Tooltip>
+        <Tooltip label="Save" shortcut={`${modKey}S`}>
+          <button
+            type="button"
+            onClick={onSave}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              onSaveAs();
+            }}
+            className={iconBtn(false)}
+          >
+            <Save className={iconCls} />
+          </button>
+        </Tooltip>
+        <Tooltip label="Pin on Screen">
+          <button type="button" onClick={onPin} className={iconBtn(false)}>
+            <Pin className={iconCls} />
+          </button>
+        </Tooltip>
 
         <span className="mx-1.5 h-[18px] w-px bg-black/[0.08]" />
 
-        <button
-          type="button"
-          onClick={() => onSelectTool(activeTool === "crop" ? "select" : "crop")}
-          title="Crop Canvas (C)"
-          className={iconBtn(activeTool === "crop")}
-        >
-          <CropExpandIcon />
-        </button>
+        <Tooltip label="Crop Canvas" shortcut="C">
+          <button
+            type="button"
+            onClick={() =>
+              onSelectTool(activeTool === "crop" ? "select" : "crop")
+            }
+            className={iconBtn(activeTool === "crop")}
+          >
+            <Crop className={iconCls} />
+          </button>
+        </Tooltip>
       </div>
 
       {/* Center: Annotation Tools */}
       <div className="flex items-center gap-0.5">
-        <button
-          type="button"
-          onClick={() => onSelectTool("select")}
-          title="Select & Move (V)"
-          className={iconBtn(activeTool === "select")}
-        >
-          <SelectCursorIcon />
-        </button>
-        <button
-          type="button"
-          onClick={() => onSelectTool("arrow")}
-          title="Arrow (A)"
-          className={iconBtn(activeTool === "arrow")}
-        >
-          <ArrowToolIcon />
-        </button>
-        <button
-          type="button"
-          onClick={() => onSelectTool("text")}
-          title="Text (T)"
-          className={iconBtn(activeTool === "text")}
-        >
-          <SerifTextIcon />
-        </button>
-        <button
-          type="button"
-          onClick={() => onSelectTool("ruler")}
-          title="Measure Distance (R)"
-          className={iconBtn(activeTool === "ruler")}
-        >
-          <RulerMeasureIcon />
-        </button>
-        <button
-          type="button"
-          onClick={() => onSelectTool("rect")}
-          title="Rectangle (S)"
-          className={iconBtn(activeTool === "rect")}
-        >
-          <RectToolIcon />
-        </button>
-        <button
-          type="button"
-          onClick={() => onSelectTool(activeTool === "frame" ? "select" : "frame")}
-          title="Frame & Backdrop (F)"
-          className={iconBtn(activeTool === "frame" || backdropEnabled)}
-        >
-          <FrameToolIcon />
-        </button>
-        <button
-          type="button"
-          onClick={() => onSelectTool("pen")}
-          title="Freehand Pen (P)"
-          className={iconBtn(activeTool === "pen")}
-        >
-          <PenToolIcon />
-        </button>
-        <button
-          type="button"
-          onClick={() => onSelectTool("blur")}
-          title="Blur / Redact (B)"
-          className={iconBtn(activeTool === "blur" || activeTool === "pixelate")}
-        >
-          <BlurRedactIcon />
-        </button>
+        <Tooltip label="Select & Move" shortcut="V">
+          <button
+            type="button"
+            onClick={() => onSelectTool("select")}
+            className={iconBtn(activeTool === "select")}
+          >
+            <MousePointer2 className={iconCls} />
+          </button>
+        </Tooltip>
+        <Tooltip label="Arrow" shortcut="A">
+          <button
+            type="button"
+            onClick={() => onSelectTool("arrow")}
+            className={iconBtn(activeTool === "arrow")}
+          >
+            <ArrowUpRight className={iconCls} />
+          </button>
+        </Tooltip>
+        <Tooltip label="Text" shortcut="T">
+          <button
+            type="button"
+            onClick={() => onSelectTool("text")}
+            className={iconBtn(activeTool === "text")}
+          >
+            <Type className={iconCls} />
+          </button>
+        </Tooltip>
+        <Tooltip label="Measure Distance" shortcut="R">
+          <button
+            type="button"
+            onClick={() => onSelectTool("ruler")}
+            className={iconBtn(activeTool === "ruler")}
+          >
+            <Ruler className={iconCls} />
+          </button>
+        </Tooltip>
+        <Tooltip label="Rectangle" shortcut="S">
+          <button
+            type="button"
+            onClick={() => onSelectTool("rect")}
+            className={iconBtn(activeTool === "rect")}
+          >
+            <Square className={iconCls} />
+          </button>
+        </Tooltip>
+        <Tooltip label="Backdrop & Frame" shortcut="F">
+          <button
+            type="button"
+            onClick={() =>
+              onSelectTool(activeTool === "frame" ? "select" : "frame")
+            }
+            className={iconBtn(activeTool === "frame" || backdropEnabled)}
+          >
+            <BackdropFrameIcon />
+          </button>
+        </Tooltip>
+        <Tooltip label="Pen / Highlighter" shortcut="P">
+          <button
+            type="button"
+            onClick={() => onSelectTool("pen")}
+            className={iconBtn(activeTool === "pen")}
+          >
+            <Pencil className={iconCls} />
+          </button>
+        </Tooltip>
+        <Tooltip label="Blur / Mosaic" shortcut="B">
+          <button
+            type="button"
+            onClick={() => onSelectTool("blur")}
+            className={iconBtn(
+              activeTool === "blur" || activeTool === "pixelate",
+            )}
+          >
+            <MosaicBlurIcon />
+          </button>
+        </Tooltip>
 
         {/* More tools dropdown */}
         <div ref={moreRef} className="relative">
-          <button
-            type="button"
-            onClick={() => setMoreOpen((v) => !v)}
-            title="More Tools & Actions"
-            className={iconBtn(
-              moreOpen ||
-                activeTool === "ellipse" ||
-                activeTool === "line" ||
-                activeTool === "counter",
-            )}
-          >
-            <MoreDotsIcon />
-          </button>
+          <Tooltip label="More Tools" disabled={moreOpen}>
+            <button
+              type="button"
+              onClick={() => setMoreOpen((v) => !v)}
+              className={iconBtn(
+                moreOpen ||
+                  activeTool === "ellipse" ||
+                  activeTool === "line" ||
+                  activeTool === "counter",
+              )}
+            >
+              <Ellipsis className={iconCls} />
+            </button>
+          </Tooltip>
 
           {moreOpen && (
             <div className="animate-pop-in absolute left-0 top-full z-50 mt-2 w-48 rounded-xl border border-black/[0.1] bg-white/95 py-1.5 text-[12.5px] text-[#141416] shadow-[0_12px_36px_rgba(0,0,0,0.14)] backdrop-blur-xl">
@@ -407,7 +322,8 @@ export function EditorToolbar({
                 className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05]"
               >
                 <span className="flex items-center gap-2">
-                  <Circle className="h-3.5 w-3.5 text-[#3F3F46]" /> Ellipse
+                  <Circle className="h-3.5 w-3.5 stroke-[1.8] text-[#3F3F46]" />{" "}
+                  Ellipse
                 </span>
                 <span className="font-mono text-[11px] text-[#63636C]">O</span>
               </button>
@@ -420,7 +336,8 @@ export function EditorToolbar({
                 className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05]"
               >
                 <span className="flex items-center gap-2">
-                  <Minus className="h-3.5 w-3.5 text-[#3F3F46]" /> Line
+                  <Slash className="h-3.5 w-3.5 stroke-[1.8] text-[#3F3F46]" />{" "}
+                  Line
                 </span>
                 <span className="font-mono text-[11px] text-[#63636C]">L</span>
               </button>
@@ -433,7 +350,8 @@ export function EditorToolbar({
                 className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05]"
               >
                 <span className="flex items-center gap-2">
-                  <Hash className="h-3.5 w-3.5 text-[#3F3F46]" /> Step Counter
+                  <StepCounterIcon className="h-3.5 w-3.5 text-[#3F3F46]" />{" "}
+                  Step Counter
                 </span>
                 <span className="font-mono text-[11px] text-[#63636C]">N</span>
               </button>
@@ -446,7 +364,8 @@ export function EditorToolbar({
                 className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05]"
               >
                 <span className="flex items-center gap-2">
-                  <Grid2x2 className="h-3.5 w-3.5 text-[#3F3F46]" /> Pixelate
+                  <Grid3x3 className="h-3.5 w-3.5 stroke-[1.8] text-[#3F3F46]" />{" "}
+                  Pixelate
                 </span>
                 <span className="font-mono text-[11px] text-[#63636C]">X</span>
               </button>
@@ -463,9 +382,12 @@ export function EditorToolbar({
                 className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05] disabled:cursor-default disabled:opacity-40"
               >
                 <span className="flex items-center gap-2">
-                  <Undo2 className="h-3.5 w-3.5 text-[#3F3F46]" /> Undo
+                  <Undo2 className="h-3.5 w-3.5 stroke-[1.8] text-[#3F3F46]" />{" "}
+                  Undo
                 </span>
-                <span className="font-mono text-[11px] text-[#63636C]">⌘Z</span>
+                <span className="font-mono text-[11px] text-[#63636C]">
+                  {modKey}Z
+                </span>
               </button>
               <button
                 type="button"
@@ -477,9 +399,12 @@ export function EditorToolbar({
                 className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05] disabled:cursor-default disabled:opacity-40"
               >
                 <span className="flex items-center gap-2">
-                  <Redo2 className="h-3.5 w-3.5 text-[#3F3F46]" /> Redo
+                  <Redo2 className="h-3.5 w-3.5 stroke-[1.8] text-[#3F3F46]" />{" "}
+                  Redo
                 </span>
-                <span className="font-mono text-[11px] text-[#63636C]">⌘⇧Z</span>
+                <span className="font-mono text-[11px] text-[#63636C]">
+                  {modKey}⇧Z
+                </span>
               </button>
               <button
                 type="button"
@@ -490,7 +415,8 @@ export function EditorToolbar({
                 }}
                 className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-[#D70015] hover:bg-[#FF3B30]/[0.06] disabled:cursor-default disabled:opacity-40"
               >
-                <Trash2 className="h-3.5 w-3.5" /> Clear Annotations
+                <Trash2 className="h-3.5 w-3.5 stroke-[1.8]" /> Clear
+                Annotations
               </button>
 
               <div className="my-1 h-px bg-black/[0.07]" />
@@ -504,9 +430,12 @@ export function EditorToolbar({
                 className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05]"
               >
                 <span className="flex items-center gap-2">
-                  <Save className="h-3.5 w-3.5 text-[#3F3F46]" /> Save As…
+                  <Save className="h-3.5 w-3.5 stroke-[1.8] text-[#3F3F46]" />{" "}
+                  Save As…
                 </span>
-                <span className="font-mono text-[11px] text-[#63636C]">⌘⇧S</span>
+                <span className="font-mono text-[11px] text-[#63636C]">
+                  {modKey}⇧S
+                </span>
               </button>
               <button
                 type="button"
@@ -517,70 +446,81 @@ export function EditorToolbar({
                 className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05]"
               >
                 <span className="flex items-center gap-2">
-                  <Settings className="h-3.5 w-3.5 text-[#3F3F46]" /> Preferences…
+                  <Settings className="h-3.5 w-3.5 stroke-[1.8] text-[#3F3F46]" />{" "}
+                  Preferences…
                 </span>
-                <span className="font-mono text-[11px] text-[#63636C]">⌘,</span>
+                <span className="font-mono text-[11px] text-[#63636C]">
+                  {modKey},
+                </span>
               </button>
             </div>
           )}
         </div>
       </div>
 
-      {/* Right: Live Inspector matching Reference Image 2 */}
+      {/* Right: Live Inspector */}
       <div className="flex items-center gap-3">
         {/* Live Color Well + Hex (updated directly via refs for 0 React re-renders) */}
-        <button
-          type="button"
-          onClick={onCopyHex}
-          title="Click or press Tab to copy color"
-          className="flex cursor-pointer items-center gap-2.5 rounded-lg px-1.5 py-1 text-left transition hover:bg-black/[0.05]"
-        >
-          <span
-            ref={colorDotRef}
-            className="h-[22px] w-[22px] shrink-0 rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.16)]"
-            style={{ backgroundColor: "#000000" }}
-          />
-          <div className="flex flex-col leading-[1.2]">
+        <Tooltip label="Copy Hex Color" shortcut="Tab">
+          <button
+            type="button"
+            onClick={onCopyHex}
+            className="flex cursor-pointer items-center gap-2.5 rounded-lg px-1.5 py-1 text-left transition hover:bg-black/[0.05]"
+          >
             <span
-              ref={colorHexRef}
-              className="font-mono text-[12px] font-medium tracking-[-0.01em] text-[#141416]"
-            >
-              #000000
-            </span>
-            <span className="text-[11px] text-[#52525B]">Tab to copy</span>
-          </div>
-        </button>
+              ref={colorDotRef}
+              className="h-[22px] w-[22px] shrink-0 rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.16)]"
+              style={{ backgroundColor: "#000000" }}
+            />
+            <div className="flex flex-col leading-[1.2]">
+              <span
+                ref={colorHexRef}
+                className="font-mono text-[12px] font-medium tracking-[-0.01em] text-[#141416]"
+              >
+                #000000
+              </span>
+              <span className="text-[11px] text-[#52525B]">Tab to copy</span>
+            </div>
+          </button>
+        </Tooltip>
 
         <span className="h-[26px] w-px bg-black/[0.09]" />
 
         {/* Image Size */}
-        <button
-          type="button"
-          onClick={onOpenResize}
-          title="Click to resize image"
-          className="flex cursor-pointer flex-col rounded-lg px-1.5 py-1 text-left leading-[1.2] transition hover:bg-black/[0.05]"
-        >
-          <span className="text-[12px] font-medium tabular-nums tracking-[-0.01em] text-[#141416]">
-            {widthPt}×{heightPt}pt
-          </span>
-          <span className="text-[11px] text-[#52525B]">Image size</span>
-        </button>
+        <Tooltip label="Resize Image">
+          <button
+            type="button"
+            onClick={onOpenResize}
+            className="flex cursor-pointer flex-col rounded-lg px-1.5 py-1 text-left leading-[1.2] transition hover:bg-black/[0.05]"
+          >
+            <span className="text-[12px] font-medium tabular-nums tracking-[-0.01em] text-[#141416]">
+              {widthPt}×{heightPt}pt
+            </span>
+            <span className="text-[11px] text-[#52525B]">Image size</span>
+          </button>
+        </Tooltip>
 
         <span className="h-[26px] w-px bg-black/[0.09]" />
 
         {/* Zoom */}
         <div ref={zoomRef} className="relative">
-          <button
-            type="button"
-            onClick={() => setZoomOpen((v) => !v)}
-            title="Change Zoom (⌘+ / ⌘- / ⌘0)"
-            className="flex min-w-[46px] cursor-pointer flex-col rounded-lg px-1.5 py-1 text-left leading-[1.2] transition hover:bg-black/[0.05]"
+          <Tooltip
+            label="Change Zoom"
+            shortcut={`${modKey}+ / -`}
+            align="right"
+            disabled={zoomOpen}
           >
-            <span className="text-[12px] font-medium tabular-nums tracking-[-0.01em] text-[#141416]">
-              {Math.round(zoom * 100)}%
-            </span>
-            <span className="text-[11px] text-[#52525B]">Zoom</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setZoomOpen((v) => !v)}
+              className="flex min-w-[46px] cursor-pointer flex-col rounded-lg px-1.5 py-1 text-left leading-[1.2] transition hover:bg-black/[0.05]"
+            >
+              <span className="text-[12px] font-medium tabular-nums tracking-[-0.01em] text-[#141416]">
+                {Math.round(zoom * 100)}%
+              </span>
+              <span className="text-[11px] text-[#52525B]">Zoom</span>
+            </button>
+          </Tooltip>
 
           {zoomOpen && (
             <div className="animate-pop-in absolute right-0 top-full z-50 mt-2 w-28 rounded-xl border border-black/[0.1] bg-white/95 py-1 text-[12px] text-[#141416] shadow-[0_12px_36px_rgba(0,0,0,0.14)] backdrop-blur-xl">

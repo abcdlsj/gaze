@@ -17,6 +17,7 @@ import {
   getSettings,
   openPreferencesWindow,
   pinImageBytes,
+  revealWindow,
   saveImageBytes,
 } from "../lib/tauri";
 import type {
@@ -50,6 +51,7 @@ interface CropRect {
 export function EditorWindow({ captureId }: { captureId: string }) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const revealedRef = useRef(false);
   // Direct DOM refs for zero-rerender 120fps live color inspector
   const colorDotRef = useRef<HTMLSpanElement | null>(null);
   const colorHexRef = useRef<HTMLSpanElement | null>(null);
@@ -173,7 +175,7 @@ export function EditorWindow({ captureId }: { captureId: string }) {
         const ctx = c.getContext("2d");
         if (ctx) {
           const imgData = new ImageData(
-            new Uint8ClampedArray(raw.data),
+            raw.data as Uint8ClampedArray<ArrayBuffer>,
             raw.width,
             raw.height,
           );
@@ -191,16 +193,23 @@ export function EditorWindow({ captureId }: { captureId: string }) {
         setImgSize({ w: raw.width, h: raw.height });
 
         const vp = viewportRef.current;
-        if (vp) {
-          const logicalW = raw.width / sf;
-          const logicalH = raw.height / sf;
-          const fitW = (vp.clientWidth - 64) / Math.max(1, logicalW);
-          const fitH = (vp.clientHeight - 64) / Math.max(1, logicalH);
-          const initialZoom = Math.min(1, fitW, fitH);
-          setZoom(Math.max(0.15, Number(initialZoom.toFixed(2))));
-        }
+        const vpW = vp && vp.clientWidth > 0 ? vp.clientWidth : window.innerWidth;
+        const vpH =
+          vp && vp.clientHeight > 0
+            ? vp.clientHeight
+            : Math.max(200, window.innerHeight - 48);
+        const logicalW = raw.width / sf;
+        const logicalH = raw.height / sf;
+        const fitW = (vpW - 64) / Math.max(1, logicalW);
+        const fitH = (vpH - 64) / Math.max(1, logicalH);
+        const initialZoom = Math.min(1, fitW, fitH);
+        setZoom(Math.max(0.15, Number(initialZoom.toFixed(2))));
       } catch (err) {
         console.error("Failed to load capture:", err);
+        if (!revealedRef.current) {
+          revealedRef.current = true;
+          void revealWindow(true);
+        }
       }
     })();
 
@@ -251,6 +260,15 @@ export function EditorWindow({ captureId }: { captureId: string }) {
       } catch {
         // ignore
       }
+    }
+
+    // Reveal the hidden editor window only after the first composite frame is painted
+    // so there is zero white window flash after idle.
+    if (!revealedRef.current) {
+      revealedRef.current = true;
+      setTimeout(() => {
+        void revealWindow(true);
+      }, 16);
     }
   }, [
     sourceCanvas,
