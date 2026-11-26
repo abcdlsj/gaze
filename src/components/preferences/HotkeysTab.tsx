@@ -21,8 +21,8 @@ const ROWS: {
 }[] = [
   {
     key: "capture_area",
-    label: "Area",
-    hint: "Capture selected region",
+    label: "Capture",
+    hint: "Click window or drag area",
   },
   {
     key: "capture_scrolling",
@@ -36,8 +36,8 @@ const ROWS: {
   },
   {
     key: "capture_window",
-    label: "Window",
-    hint: "Capture clicked window",
+    label: "Window (Alt)",
+    hint: "Alternate capture trigger",
   },
   {
     key: "open_clipboard",

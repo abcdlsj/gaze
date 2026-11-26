@@ -1,6 +1,8 @@
 pub mod capture;
 pub mod clipboard;
 pub mod hotkeys;
+#[cfg(target_os = "macos")]
+pub mod macos_overlay;
 pub mod permissions;
 pub mod scrolling;
 pub mod settings;
@@ -30,6 +32,7 @@ pub struct AppState {
     pub scrolling: ScrollingController,
     pub overlay_seq: AtomicU64,
     pub overlay_shown_seq: AtomicU64,
+    pub overlay_starting: AtomicBool,
     pub hotkeys_suspended: AtomicBool,
 }
 
@@ -42,6 +45,7 @@ impl AppState {
             scrolling: ScrollingController::default(),
             overlay_seq: AtomicU64::new(0),
             overlay_shown_seq: AtomicU64::new(0),
+            overlay_starting: AtomicBool::new(false),
             hotkeys_suspended: AtomicBool::new(false),
         }
     }
@@ -104,33 +108,74 @@ pub fn start_overlay_capture_on_monitor(
     mode: &str,
     monitor_index: Option<usize>,
 ) -> Result<(), String> {
-    let was_visible = windows::is_overlay_visible(app);
-    windows::close_overlay(app);
-    if was_visible {
-        // Tiny pause so any existing overlay window is unmapped before capturing desktop.
-        std::thread::sleep(std::time::Duration::from_millis(35));
+    // Prevent overlapping hotkey triggers from racing on overlay state/visibility.
+    if state
+        .overlay_starting
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return Ok(());
     }
-    let session = capture::capture_overlay_session(mode, monitor_index)?;
-    let info = session.info();
-    state.store.lock().overlay = Some(session);
-    let seq = state.overlay_seq.fetch_add(1, Ordering::SeqCst) + 1;
-    let _reused = windows::open_overlay(app, &info)?;
-    // Dead-man safety net: wait generously (1500ms) so waking from macOS App Nap never races
-    // with `OverlayWindow` painting the fresh desktop snapshot before calling `show_overlay_window`.
-    let app_clone = app.clone();
-    let state_clone = state.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(1500));
-        if state_clone.overlay_shown_seq.load(Ordering::SeqCst) < seq
-            && state_clone.store.lock().overlay.is_some()
-        {
-            if let Some(win) = app_clone.get_webview_window(windows::LABEL_OVERLAY) {
-                let _ = win.show();
-                let _ = win.set_focus();
-            }
+    struct StartingGuard<'a>(&'a AtomicBool);
+    impl Drop for StartingGuard<'_> {
+        fn drop(&mut self) {
+            self.0.store(false, Ordering::SeqCst);
         }
-    });
-    Ok(())
+    }
+    let _guard = StartingGuard(&state.overlay_starting);
+
+    let seq = state.overlay_seq.fetch_add(1, Ordering::SeqCst) + 1;
+
+    #[cfg(target_os = "macos")]
+    {
+        // Overlay uses `NSWindowSharingType::None`, so it is automatically excluded from
+        // `CGWindowListCreateImage` without needing to hide & sleep first.
+        let captured = capture::capture_overlay_session_macos(seq, mode, monitor_index)?;
+        let info = captured.session.info();
+        let cg_for_decode = captured.cg_image.clone();
+        let rgba_setter = captured.rgba_setter;
+
+        // Store the session first so immediate IPC calls from the WebView never race.
+        state.store.lock().overlay = Some(captured.session);
+        state.overlay_shown_seq.store(seq, Ordering::SeqCst);
+
+        // Present native CALayer frozen backdrop immediately (~1-2ms).
+        windows::open_overlay_native(app, &info, captured.cg_image)?;
+
+        // Decode CGImage -> RgbaImage in parallel on a worker thread for loupe & cropping.
+        std::thread::spawn(move || {
+            let decoded = macos_overlay::cg_image_to_rgba(&cg_for_decode.0, true);
+            rgba_setter.resolve(decoded);
+        });
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let was_visible = windows::is_overlay_visible(app);
+        if was_visible {
+            windows::close_overlay(app, seq.saturating_sub(1));
+            std::thread::sleep(std::time::Duration::from_millis(35));
+        }
+        let session = capture::capture_overlay_session(seq, mode, monitor_index)?;
+        let info = session.info();
+        state.store.lock().overlay = Some(session);
+        let _reused = windows::open_overlay(app, &info)?;
+        let app_clone = app.clone();
+        let state_clone = state.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            if state_clone.overlay_shown_seq.load(Ordering::SeqCst) < seq
+                && state_clone.store.lock().overlay.is_some()
+            {
+                if let Some(win) = app_clone.get_webview_window(windows::LABEL_OVERLAY) {
+                    let _ = win.show();
+                    let _ = win.set_focus();
+                }
+            }
+        });
+        Ok(())
+    }
 }
 
 pub fn finalize_capture(
@@ -304,26 +349,36 @@ fn get_overlay_session(state: State<'_, Arc<AppState>>) -> Result<OverlaySession
 
 #[tauri::command]
 fn get_overlay_image_png(state: State<'_, Arc<AppState>>) -> Result<Response, String> {
-    let img = state
+    let deferred = state
         .store
         .lock()
         .overlay
         .as_ref()
         .map(|s| s.image.clone())
         .ok_or_else(|| "No active overlay session".to_string())?;
-    let bytes = capture::encode_png(&img)?;
+    let bytes = deferred.with_image(capture::encode_png)?;
     Ok(Response::new(bytes))
 }
 
 #[tauri::command]
-fn get_overlay_image_raw(state: State<'_, Arc<AppState>>) -> Result<Response, String> {
-    let packed = state
-        .store
-        .lock()
-        .overlay
-        .as_ref()
-        .map(|s| capture::pack_raw_rgba(&s.image))
-        .ok_or_else(|| "No active overlay session".to_string())?;
+fn get_overlay_image_raw(
+    state: State<'_, Arc<AppState>>,
+    seq: Option<u64>,
+) -> Result<Response, String> {
+    let deferred = {
+        let store = state.store.lock();
+        let session = store
+            .overlay
+            .as_ref()
+            .ok_or_else(|| "No active overlay session".to_string())?;
+        if let Some(expected) = seq {
+            if session.seq != expected {
+                return Err("Stale overlay session".to_string());
+            }
+        }
+        session.image.clone()
+    };
+    let packed = deferred.with_image(|img| Ok(capture::pack_raw_rgba(img)))?;
     Ok(Response::new(packed))
 }
 
@@ -370,8 +425,20 @@ fn reveal_window(window: tauri::WebviewWindow, focus: bool) {
 
 #[tauri::command]
 fn cancel_overlay(app: AppHandle, state: State<'_, Arc<AppState>>) {
+    let seq = state.overlay_seq.load(Ordering::SeqCst);
     state.store.lock().overlay = None;
-    windows::close_overlay(&app);
+    windows::close_overlay(&app, seq);
+}
+
+/// Dismisses any active overlay cleanly from native OS callbacks (e.g. Space swipe or native Esc).
+#[cfg(target_os = "macos")]
+pub fn dismiss_overlay_from_native(app: &AppHandle) {
+    let state = app.state::<Arc<AppState>>();
+    let had_overlay = state.store.lock().overlay.take().is_some();
+    if had_overlay {
+        let seq = state.overlay_seq.load(Ordering::SeqCst);
+        windows::close_overlay(app, seq);
+    }
 }
 
 #[tauri::command]
@@ -403,18 +470,20 @@ fn complete_area_selection(
     height: f64,
     action: String,
 ) -> Result<CaptureMeta, String> {
-    let (cropped, scale, bounds) = {
-        let store = state.store.lock();
-        let session = store
-            .overlay
-            .as_ref()
-            .ok_or_else(|| "No active overlay session".to_string())?;
-        let img = capture::crop_from_session(session, x, y, width, height)?;
-        (img, session.scale_factor, session.bounds())
-    };
+    let seq = state.overlay_seq.load(Ordering::SeqCst);
+    let session_copy = state
+        .store
+        .lock()
+        .overlay
+        .take()
+        .ok_or_else(|| "No active overlay session".to_string())?;
 
-    windows::close_overlay(&app);
-    state.store.lock().overlay = None;
+    // Hide overlay immediately for snappy UX while cropping/copying/opening editor.
+    windows::close_overlay(&app, seq);
+
+    let cropped = capture::crop_from_session(&session_copy, x, y, width, height)?;
+    let scale = session_copy.scale_factor;
+    let bounds = session_copy.bounds();
 
     let meta = state
         .store
@@ -455,17 +524,45 @@ fn complete_window_selection(
     app: AppHandle,
     state: State<'_, Arc<AppState>>,
     window_id: u32,
+    action: Option<String>,
 ) -> Result<CaptureMeta, String> {
+    let seq = state.overlay_seq.load(Ordering::SeqCst);
     let settings = state.settings.lock().clone();
-    let session_copy = state.store.lock().overlay.clone();
+    let session_copy = state.store.lock().overlay.take();
     let bounds = session_copy.as_ref().map(|s| s.bounds());
-    windows::close_overlay(&app);
-    state.store.lock().overlay = None;
+    windows::close_overlay(&app, seq);
 
     let (img, scale) =
         capture::capture_window_with_background(window_id, &settings, session_copy.as_ref())?;
-    let meta = state.store.lock().insert(img, scale, "window", bounds);
-    finalize_capture(&app, &state, &meta, false)?;
+    let meta = state
+        .store
+        .lock()
+        .insert(img.clone(), scale, "window", bounds);
+
+    match action.as_deref().unwrap_or("default") {
+        "copy" => {
+            clipboard::copy_rgba_image(&img)?;
+        }
+        "save" => {
+            capture::save_image_file(&img, scale, &settings, None)?;
+        }
+        "pin" => {
+            windows::open_pin(&app, &meta.id, meta.width, meta.height, meta.scale_factor)?;
+        }
+        "editor" => {
+            windows::open_editor(
+                &app,
+                &meta.id,
+                meta.width,
+                meta.height,
+                meta.scale_factor,
+                bounds,
+            )?;
+        }
+        _ => {
+            finalize_capture(&app, &state, &meta, false)?;
+        }
+    }
     Ok(meta)
 }
 
@@ -691,9 +788,12 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             {
                 app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                macos_overlay::disable_app_nap();
             }
 
             let handle = app.handle().clone();
+            #[cfg(target_os = "macos")]
+            macos_overlay::install_space_change_observer(&handle);
             let settings = app_state.settings.lock().clone();
             tray::setup_tray(&handle, &settings.hotkeys, dispatch_capture_action)
                 .map_err(std::io::Error::other)?;

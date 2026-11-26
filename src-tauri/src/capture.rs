@@ -4,12 +4,81 @@ use image::{
     codecs::jpeg::JpegEncoder, codecs::png::PngEncoder, imageops, ColorType, ImageEncoder, Rgba,
     RgbaImage,
 };
+use parking_lot::{Condvar, Mutex};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use uuid::Uuid;
-use xcap::{Monitor, Window};
+use xcap::Monitor;
+#[cfg(not(target_os = "macos"))]
+use xcap::Window;
+
+type DeferredImageSlot = Arc<(Mutex<Option<Result<RgbaImage, String>>>, Condvar)>;
+
+/// Thread-safe handle to an `RgbaImage` that may be decoded asynchronously on a background thread
+/// while the native macOS `CALayer` backdrop is already visible on screen.
+#[derive(Clone)]
+pub struct DeferredRgbaImage {
+    inner: DeferredImageSlot,
+}
+
+impl std::fmt::Debug for DeferredRgbaImage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("DeferredRgbaImage")
+    }
+}
+
+pub struct DeferredRgbaSetter {
+    inner: DeferredImageSlot,
+}
+
+impl DeferredRgbaSetter {
+    pub fn resolve(self, value: Result<RgbaImage, String>) {
+        let (lock, cvar) = &*self.inner;
+        let mut slot = lock.lock();
+        *slot = Some(value);
+        cvar.notify_all();
+    }
+}
+
+impl DeferredRgbaImage {
+    pub fn ready(img: RgbaImage) -> Self {
+        Self {
+            inner: Arc::new((Mutex::new(Some(Ok(img))), Condvar::new())),
+        }
+    }
+
+    pub fn pending() -> (Self, DeferredRgbaSetter) {
+        let inner = Arc::new((Mutex::new(None), Condvar::new()));
+        (
+            Self {
+                inner: inner.clone(),
+            },
+            DeferredRgbaSetter { inner },
+        )
+    }
+
+    pub fn with_image<R>(
+        &self,
+        f: impl FnOnce(&RgbaImage) -> Result<R, String>,
+    ) -> Result<R, String> {
+        let (lock, cvar) = &*self.inner;
+        let mut guard = lock.lock();
+        while guard.is_none() {
+            cvar.wait(&mut guard);
+        }
+        match guard.as_ref().expect("slot resolved") {
+            Ok(img) => f(img),
+            Err(e) => Err(e.clone()),
+        }
+    }
+
+    pub fn clone_image(&self) -> Result<RgbaImage, String> {
+        self.with_image(|img| Ok(img.clone()))
+    }
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct WindowRect {
@@ -63,6 +132,7 @@ impl StoredCapture {
 
 #[derive(Debug, Clone)]
 pub struct OverlaySession {
+    pub seq: u64,
     pub monitor_id: u32,
     pub monitor_name: String,
     pub monitor_index: usize,
@@ -71,14 +141,20 @@ pub struct OverlaySession {
     pub monitor_y: i32,
     pub monitor_width: u32,
     pub monitor_height: u32,
+    pub image_width: u32,
+    pub image_height: u32,
     pub scale_factor: f32,
-    pub image: RgbaImage,
+    pub image: DeferredRgbaImage,
     pub windows: Vec<WindowRect>,
     pub initial_mode: String,
+    pub initial_cursor_x: Option<f64>,
+    pub initial_cursor_y: Option<f64>,
+    pub has_native_backdrop: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct OverlaySessionInfo {
+    pub seq: u64,
     pub monitor_id: u32,
     pub monitor_name: String,
     pub monitor_index: usize,
@@ -92,11 +168,15 @@ pub struct OverlaySessionInfo {
     pub scale_factor: f32,
     pub windows: Vec<WindowRect>,
     pub initial_mode: String,
+    pub initial_cursor_x: Option<f64>,
+    pub initial_cursor_y: Option<f64>,
+    pub has_native_backdrop: bool,
 }
 
 impl OverlaySession {
     pub fn info(&self) -> OverlaySessionInfo {
         OverlaySessionInfo {
+            seq: self.seq,
             monitor_id: self.monitor_id,
             monitor_name: self.monitor_name.clone(),
             monitor_index: self.monitor_index,
@@ -105,11 +185,14 @@ impl OverlaySession {
             monitor_y: self.monitor_y,
             monitor_width: self.monitor_width,
             monitor_height: self.monitor_height,
-            image_width: self.image.width(),
-            image_height: self.image.height(),
+            image_width: self.image_width,
+            image_height: self.image_height,
             scale_factor: self.scale_factor,
             windows: self.windows.clone(),
             initial_mode: self.initial_mode.clone(),
+            initial_cursor_x: self.initial_cursor_x,
+            initial_cursor_y: self.initial_cursor_y,
+            has_native_backdrop: self.has_native_backdrop,
         }
     }
 
@@ -246,10 +329,102 @@ pub fn find_monitor_by_id(monitor_id: u32) -> Result<Monitor, String> {
         .ok_or_else(|| format!("Monitor {monitor_id} not found"))
 }
 
+#[cfg(target_os = "macos")]
+pub struct CapturedOverlay {
+    pub session: OverlaySession,
+    pub cg_image: crate::macos_overlay::SendCGImage,
+    pub rgba_setter: DeferredRgbaSetter,
+}
+
+#[cfg(target_os = "macos")]
+pub fn capture_overlay_session_macos(
+    seq: u64,
+    initial_mode: &str,
+    monitor_index_override: Option<usize>,
+) -> Result<CapturedOverlay, String> {
+    let cursor = get_cursor_position();
+    let (monitor, monitor_index, monitor_count) = match monitor_index_override {
+        Some(idx) => find_monitor_by_index(idx)?,
+        None => find_active_monitor()?,
+    };
+    let monitor_id = monitor.id().map_err(|e| e.to_string())?;
+    let monitor_name = monitor
+        .friendly_name()
+        .or_else(|_| monitor.name())
+        .unwrap_or_else(|_| format!("Display {}", monitor_index + 1));
+    let monitor_x = monitor.x().map_err(|e| e.to_string())?;
+    let monitor_y = monitor.y().map_err(|e| e.to_string())?;
+    let monitor_width = monitor.width().map_err(|e| e.to_string())?;
+    let monitor_height = monitor.height().map_err(|e| e.to_string())?;
+    let scale_factor = monitor.scale_factor().unwrap_or(1.0).max(1.0);
+
+    // Grab the hardware-backed CGImage directly (~15-25ms) with zero CPU copy.
+    let cg_image = crate::macos_overlay::capture_display_cg_image(
+        monitor_x,
+        monitor_y,
+        monitor_width,
+        monitor_height,
+    )?;
+    let image_width = objc2_core_graphics::CGImage::width(Some(&cg_image.0)) as u32;
+    let image_height = objc2_core_graphics::CGImage::height(Some(&cg_image.0)) as u32;
+
+    // Single-pass CGWindowListCopyWindowInfo (< 1ms) so Snipaste hover highlight is instant.
+    let windows = crate::macos_overlay::enumerate_monitor_windows_fast(
+        monitor_x,
+        monitor_y,
+        monitor_width,
+        monitor_height,
+    );
+
+    let (initial_cursor_x, initial_cursor_y) = match cursor {
+        Some((cx, cy))
+            if cx >= monitor_x
+                && cx < monitor_x + monitor_width as i32
+                && cy >= monitor_y
+                && cy < monitor_y + monitor_height as i32 =>
+        {
+            (Some((cx - monitor_x) as f64), Some((cy - monitor_y) as f64))
+        }
+        _ => (None, None),
+    };
+
+    let (deferred_img, rgba_setter) = DeferredRgbaImage::pending();
+
+    let session = OverlaySession {
+        seq,
+        monitor_id,
+        monitor_name,
+        monitor_index,
+        monitor_count,
+        monitor_x,
+        monitor_y,
+        monitor_width,
+        monitor_height,
+        image_width,
+        image_height,
+        scale_factor,
+        image: deferred_img,
+        windows,
+        initial_mode: initial_mode.to_string(),
+        initial_cursor_x,
+        initial_cursor_y,
+        has_native_backdrop: true,
+    };
+
+    Ok(CapturedOverlay {
+        session,
+        cg_image,
+        rgba_setter,
+    })
+}
+
+#[cfg(not(target_os = "macos"))]
 pub fn capture_overlay_session(
+    seq: u64,
     initial_mode: &str,
     monitor_index_override: Option<usize>,
 ) -> Result<OverlaySession, String> {
+    let cursor = get_cursor_position();
     let (monitor, monitor_index, monitor_count) = match monitor_index_override {
         Some(idx) => find_monitor_by_index(idx)?,
         None => find_active_monitor()?,
@@ -268,16 +443,25 @@ pub fn capture_overlay_session(
     let image = monitor
         .capture_image()
         .map_err(|e| format!("Screen capture failed (check Screen Recording permission): {e}"))?;
+    let image_width = image.width();
+    let image_height = image.height();
 
-    // Only enumerate OS windows immediately when starting in Window mode; otherwise load lazily
-    // so Area / Scrolling capture (F1) has zero extra latency.
-    let windows = if initial_mode == "window" {
-        enumerate_monitor_windows(monitor_x, monitor_y, monitor_width, monitor_height)
-    } else {
-        Vec::new()
+    let windows = enumerate_monitor_windows(monitor_x, monitor_y, monitor_width, monitor_height);
+
+    let (initial_cursor_x, initial_cursor_y) = match cursor {
+        Some((cx, cy))
+            if cx >= monitor_x
+                && cx < monitor_x + monitor_width as i32
+                && cy >= monitor_y
+                && cy < monitor_y + monitor_height as i32 =>
+        {
+            (Some((cx - monitor_x) as f64), Some((cy - monitor_y) as f64))
+        }
+        _ => (None, None),
     };
 
     Ok(OverlaySession {
+        seq,
         monitor_id,
         monitor_name,
         monitor_index,
@@ -286,10 +470,15 @@ pub fn capture_overlay_session(
         monitor_y,
         monitor_width,
         monitor_height,
+        image_width,
+        image_height,
         scale_factor,
-        image,
+        image: DeferredRgbaImage::ready(image),
         windows,
         initial_mode: initial_mode.to_string(),
+        initial_cursor_x,
+        initial_cursor_y,
+        has_native_backdrop: false,
     })
 }
 
@@ -299,50 +488,63 @@ pub fn enumerate_monitor_windows(
     monitor_width: u32,
     monitor_height: u32,
 ) -> Vec<WindowRect> {
-    let mut windows = Vec::new();
-    if let Ok(all_windows) = Window::all() {
-        for win in all_windows {
-            if win.is_minimized().unwrap_or(false) {
-                continue;
-            }
-            let app_name = win.app_name().unwrap_or_default();
-            if app_name.eq_ignore_ascii_case("gaze")
-                || app_name.eq_ignore_ascii_case("window server")
-                || app_name.eq_ignore_ascii_case("dock")
-                || app_name.eq_ignore_ascii_case("control center")
-            {
-                continue;
-            }
-            let w = win.width().unwrap_or(0);
-            let h = win.height().unwrap_or(0);
-            if w < 32 || h < 32 {
-                continue;
-            }
-            let wx = win.x().unwrap_or(0) - monitor_x;
-            let wy = win.y().unwrap_or(0) - monitor_y;
-            if wx + (w as i32) <= 0
-                || wy + (h as i32) <= 0
-                || wx >= monitor_width as i32
-                || wy >= monitor_height as i32
-            {
-                continue;
-            }
-            let id = match win.id() {
-                Ok(id) => id,
-                Err(_) => continue,
-            };
-            windows.push(WindowRect {
-                id,
-                app_name,
-                title: win.title().unwrap_or_default(),
-                x: wx,
-                y: wy,
-                width: w,
-                height: h,
-            });
-        }
+    #[cfg(target_os = "macos")]
+    {
+        crate::macos_overlay::enumerate_monitor_windows_fast(
+            monitor_x,
+            monitor_y,
+            monitor_width,
+            monitor_height,
+        )
     }
-    windows
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let mut windows = Vec::new();
+        if let Ok(all_windows) = Window::all() {
+            for win in all_windows {
+                if win.is_minimized().unwrap_or(false) {
+                    continue;
+                }
+                let app_name = win.app_name().unwrap_or_default();
+                if app_name.eq_ignore_ascii_case("gaze")
+                    || app_name.eq_ignore_ascii_case("window server")
+                    || app_name.eq_ignore_ascii_case("dock")
+                    || app_name.eq_ignore_ascii_case("control center")
+                {
+                    continue;
+                }
+                let w = win.width().unwrap_or(0);
+                let h = win.height().unwrap_or(0);
+                if w < 32 || h < 32 {
+                    continue;
+                }
+                let wx = win.x().unwrap_or(0) - monitor_x;
+                let wy = win.y().unwrap_or(0) - monitor_y;
+                if wx + (w as i32) <= 0
+                    || wy + (h as i32) <= 0
+                    || wx >= monitor_width as i32
+                    || wy >= monitor_height as i32
+                {
+                    continue;
+                }
+                let id = match win.id() {
+                    Ok(id) => id,
+                    Err(_) => continue,
+                };
+                windows.push(WindowRect {
+                    id,
+                    app_name,
+                    title: win.title().unwrap_or_default(),
+                    x: wx,
+                    y: wy,
+                    width: w,
+                    height: h,
+                });
+            }
+        }
+        windows
+    }
 }
 
 /// Packs an RGBA image into a zero-compression binary buffer:
@@ -382,19 +584,17 @@ pub fn crop_from_session(
     if width < 2.0 || height < 2.0 {
         return Err("Selection is too small".to_string());
     }
-    let rx = session.image.width() as f64 / (session.monitor_width.max(1) as f64);
-    let ry = session.image.height() as f64 / (session.monitor_height.max(1) as f64);
+    session.image.with_image(|img| {
+        let rx = img.width() as f64 / (session.monitor_width.max(1) as f64);
+        let ry = img.height() as f64 / (session.monitor_height.max(1) as f64);
 
-    let px = (x * rx)
-        .round()
-        .clamp(0.0, (session.image.width() - 1) as f64) as u32;
-    let py = (y * ry)
-        .round()
-        .clamp(0.0, (session.image.height() - 1) as f64) as u32;
-    let pw = ((width * rx).round() as u32).clamp(1, session.image.width() - px);
-    let ph = ((height * ry).round() as u32).clamp(1, session.image.height() - py);
+        let px = (x * rx).round().clamp(0.0, (img.width() - 1) as f64) as u32;
+        let py = (y * ry).round().clamp(0.0, (img.height() - 1) as f64) as u32;
+        let pw = ((width * rx).round() as u32).clamp(1, img.width() - px);
+        let ph = ((height * ry).round() as u32).clamp(1, img.height() - py);
 
-    Ok(imageops::crop_imm(&session.image, px, py, pw, ph).to_image())
+        Ok(imageops::crop_imm(img, px, py, pw, ph).to_image())
+    })
 }
 
 pub fn capture_window_with_background(
@@ -402,34 +602,87 @@ pub fn capture_window_with_background(
     settings: &AppSettings,
     session_opt: Option<&OverlaySession>,
 ) -> Result<(RgbaImage, f32), String> {
-    let all_windows = Window::all().map_err(|e| format!("Failed to enumerate windows: {e}"))?;
-    let win = all_windows
-        .into_iter()
-        .find(|w| w.id().ok() == Some(window_id))
-        .ok_or_else(|| format!("Window {window_id} no longer exists"))?;
+    #[cfg(target_os = "macos")]
+    {
+        let cached_rect = session_opt.and_then(|s| {
+            s.windows.iter().find(|w| w.id == window_id).map(|w| {
+                (
+                    s.monitor_x + w.x,
+                    s.monitor_y + w.y,
+                    w.width,
+                    w.height,
+                    s.scale_factor,
+                )
+            })
+        });
+        let (abs_bounds, scale, win_x, win_y) = match cached_rect {
+            Some((ax, ay, aw, ah, sf)) => (Some((ax, ay, aw, ah)), sf.max(1.0), Some(ax), Some(ay)),
+            None => (
+                None,
+                session_opt.map(|s| s.scale_factor).unwrap_or(1.0).max(1.0),
+                None,
+                None,
+            ),
+        };
+        if let Ok(raw_img) = crate::macos_overlay::capture_window_cg_rgba(window_id, abs_bounds) {
+            let processed = apply_window_background(
+                raw_img,
+                settings.window_background,
+                &settings.solid_background_color,
+                scale,
+                session_opt,
+                win_x,
+                win_y,
+            );
+            return Ok((processed, scale));
+        }
+        // Fallback: crop the window bounds cleanly from the frozen desktop session.
+        if let Some(session) = session_opt {
+            if let Some(w) = session.windows.iter().find(|w| w.id == window_id) {
+                let cropped = crop_from_session(
+                    session,
+                    w.x as f64,
+                    w.y as f64,
+                    w.width as f64,
+                    w.height as f64,
+                )?;
+                return Ok((cropped, session.scale_factor));
+            }
+        }
+        Err(format!("Window {window_id} no longer exists"))
+    }
 
-    let scale = win
-        .current_monitor()
-        .ok()
-        .and_then(|m| m.scale_factor().ok())
-        .unwrap_or(1.0)
-        .max(1.0);
+    #[cfg(not(target_os = "macos"))]
+    {
+        let all_windows = Window::all().map_err(|e| format!("Failed to enumerate windows: {e}"))?;
+        let win = all_windows
+            .into_iter()
+            .find(|w| w.id().ok() == Some(window_id))
+            .ok_or_else(|| format!("Window {window_id} no longer exists"))?;
 
-    let raw_img = win
-        .capture_image()
-        .map_err(|e| format!("Failed to capture window: {e}"))?;
+        let scale = win
+            .current_monitor()
+            .ok()
+            .and_then(|m| m.scale_factor().ok())
+            .unwrap_or(1.0)
+            .max(1.0);
 
-    let processed = apply_window_background(
-        raw_img,
-        settings.window_background,
-        &settings.solid_background_color,
-        scale,
-        session_opt,
-        win.x().ok(),
-        win.y().ok(),
-    );
+        let raw_img = win
+            .capture_image()
+            .map_err(|e| format!("Failed to capture window: {e}"))?;
 
-    Ok((processed, scale))
+        let processed = apply_window_background(
+            raw_img,
+            settings.window_background,
+            &settings.solid_background_color,
+            scale,
+            session_opt,
+            win.x().ok(),
+            win.y().ok(),
+        );
+
+        Ok((processed, scale))
+    }
 }
 
 pub fn apply_window_background(
@@ -454,21 +707,26 @@ pub fn apply_window_background(
             let pad = (28.0 * scale).round() as u32;
             // Try using the frozen desktop backdrop behind the window if available, else a crisp scenic gradient.
             if let (Some(session), Some(wx), Some(wy)) = (session_opt, win_x, win_y) {
-                let rx = session.image.width() as f32 / session.monitor_width.max(1) as f32;
-                let ry = session.image.height() as f32 / session.monitor_height.max(1) as f32;
-                let bx = (((wx - session.monitor_x) as f32 * rx).round() as i32) - pad as i32;
-                let by = (((wy - session.monitor_y) as f32 * ry).round() as i32) - pad as i32;
-                let out_w = trimmed.width() + pad * 2;
-                let out_h = trimmed.height() + pad * 2;
-                if bx >= 0
-                    && by >= 0
-                    && (bx as u32) + out_w <= session.image.width()
-                    && (by as u32) + out_h <= session.image.height()
-                {
-                    let mut canvas =
-                        imageops::crop_imm(&session.image, bx as u32, by as u32, out_w, out_h)
-                            .to_image();
-                    imageops::overlay(&mut canvas, &trimmed, pad as i64, pad as i64);
+                if let Ok(Some(canvas)) = session.image.with_image(|simg| {
+                    let rx = simg.width() as f32 / session.monitor_width.max(1) as f32;
+                    let ry = simg.height() as f32 / session.monitor_height.max(1) as f32;
+                    let bx = (((wx - session.monitor_x) as f32 * rx).round() as i32) - pad as i32;
+                    let by = (((wy - session.monitor_y) as f32 * ry).round() as i32) - pad as i32;
+                    let out_w = trimmed.width() + pad * 2;
+                    let out_h = trimmed.height() + pad * 2;
+                    if bx >= 0
+                        && by >= 0
+                        && (bx as u32) + out_w <= simg.width()
+                        && (by as u32) + out_h <= simg.height()
+                    {
+                        let mut canvas =
+                            imageops::crop_imm(simg, bx as u32, by as u32, out_w, out_h).to_image();
+                        imageops::overlay(&mut canvas, &trimmed, pad as i64, pad as i64);
+                        Ok(Some(canvas))
+                    } else {
+                        Ok(None)
+                    }
+                }) {
                     return canvas;
                 }
             }

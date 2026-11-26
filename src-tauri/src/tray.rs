@@ -27,24 +27,18 @@ fn make_shortcut_item(
 }
 
 fn build_tray_menu(app: &AppHandle, hotkeys: &HotkeyConfig) -> Result<Menu<tauri::Wry>, String> {
-    let area = make_shortcut_item(app, "tray_area", "Capture Area", &hotkeys.capture_area)?;
-    let fullscreen = make_shortcut_item(
-        app,
-        "tray_fullscreen",
-        "Capture Fullscreen",
-        &hotkeys.capture_fullscreen,
-    )?;
-    let window = make_shortcut_item(
-        app,
-        "tray_window",
-        "Capture Window",
-        &hotkeys.capture_window,
-    )?;
+    let area = make_shortcut_item(app, "tray_area", "Capture", &hotkeys.capture_area)?;
     let scrolling = make_shortcut_item(
         app,
         "tray_scrolling",
         "Scrolling Screenshot",
         &hotkeys.capture_scrolling,
+    )?;
+    let fullscreen = make_shortcut_item(
+        app,
+        "tray_fullscreen",
+        "Capture Fullscreen",
+        &hotkeys.capture_fullscreen,
     )?;
     let clipboard = make_shortcut_item(
         app,
@@ -63,9 +57,8 @@ fn build_tray_menu(app: &AppHandle, hotkeys: &HotkeyConfig) -> Result<Menu<tauri
         app,
         &[
             &area,
-            &fullscreen,
-            &window,
             &scrolling,
+            &fullscreen,
             &clipboard,
             &sep1,
             &prefs,

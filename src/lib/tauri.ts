@@ -72,8 +72,10 @@ function unpackRawRgba(buf: ArrayBuffer): RawRgbaImage {
   return { width, height, data };
 }
 
-export async function getOverlayImageRaw(): Promise<RawRgbaImage> {
-  const buf = await invoke<ArrayBuffer>("get_overlay_image_raw");
+export async function getOverlayImageRaw(seq?: number): Promise<RawRgbaImage> {
+  const buf = await invoke<ArrayBuffer>("get_overlay_image_raw", {
+    seq: seq ?? null,
+  });
   return unpackRawRgba(buf);
 }
 
@@ -124,8 +126,9 @@ export async function completeAreaSelection(
 
 export async function completeWindowSelection(
   windowId: number,
+  action: "default" | "editor" | "copy" | "save" | "pin" = "default",
 ): Promise<CaptureMeta> {
-  return invoke<CaptureMeta>("complete_window_selection", { windowId });
+  return invoke<CaptureMeta>("complete_window_selection", { windowId, action });
 }
 
 export async function startScrollingCapture(

@@ -269,7 +269,8 @@ pub fn start_scrolling_capture(
         return Err("Scrolling capture is already running".to_string());
     };
 
-    windows::close_overlay(&app);
+    let seq = state.overlay_seq.load(Ordering::SeqCst);
+    windows::close_overlay(&app, seq);
     state.store.lock().overlay = None;
 
     let settings = state.settings.lock().clone();

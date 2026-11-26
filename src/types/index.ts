@@ -74,6 +74,7 @@ export interface CaptureMeta {
 }
 
 export interface OverlaySessionInfo {
+  seq: number;
   monitor_id: number;
   monitor_name: string;
   monitor_index: number;
@@ -87,6 +88,9 @@ export interface OverlaySessionInfo {
   scale_factor: number;
   windows: WindowRect[];
   initial_mode: "area" | "window" | "scrolling";
+  initial_cursor_x: number | null;
+  initial_cursor_y: number | null;
+  has_native_backdrop: boolean;
 }
 
 export interface ScrollProgressEvent {

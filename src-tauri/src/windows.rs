@@ -1,7 +1,6 @@
 use crate::capture::{MonitorBounds, OverlaySessionInfo};
-use tauri::{
-    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindowBuilder,
-};
+use tauri::utils::config::BackgroundThrottlingPolicy;
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 #[cfg(target_os = "macos")]
 use tauri::TitleBarStyle;
@@ -18,8 +17,7 @@ pub fn prewarm_overlay(app: &AppHandle) {
     if app.get_webview_window(LABEL_OVERLAY).is_some() {
         return;
     }
-    #[allow(unused_mut)]
-    let mut builder = WebviewWindowBuilder::new(
+    let builder = WebviewWindowBuilder::new(
         app,
         LABEL_OVERLAY,
         WebviewUrl::App("index.html?window=overlay".into()),
@@ -33,14 +31,15 @@ pub fn prewarm_overlay(app: &AppHandle) {
     .resizable(false)
     .shadow(false)
     .visible(false)
-    .focused(false);
+    .focused(false)
+    .content_protected(true)
+    .background_throttling(BackgroundThrottlingPolicy::Disabled);
 
-    #[cfg(target_os = "macos")]
-    {
-        builder = builder.visible_on_all_workspaces(true);
+    if let Ok(win) = builder.build() {
+        #[cfg(target_os = "macos")]
+        crate::macos_overlay::configure_overlay_window(&win);
+        let _ = win;
     }
-
-    let _ = builder.build();
 }
 
 /// Safety net for windows created with `visible(false)` that reveal themselves once painted:
@@ -60,6 +59,7 @@ fn schedule_reveal_fallback(app: &AppHandle, label: String, focus: bool) {
     });
 }
 
+#[cfg(not(target_os = "macos"))]
 pub fn is_overlay_visible(app: &AppHandle) -> bool {
     app.get_webview_window(LABEL_OVERLAY)
         .and_then(|w| w.is_visible().ok())
@@ -170,30 +170,51 @@ pub fn open_editor(
     Ok(())
 }
 
-/// Opens or reuses the pre-warmed capture overlay window.
-/// Returns `Ok(true)` if a pre-warmed window was reused (and notified via event),
-/// or `Ok(false)` if a fresh visible window was created directly.
+/// Opens or reuses the pre-warmed capture overlay on macOS with a hardware-accelerated native
+/// `CALayer` frozen desktop backdrop, above-menubar window level, and fullscreen-space support.
+#[cfg(target_os = "macos")]
+pub fn open_overlay_native(
+    app: &AppHandle,
+    info: &OverlaySessionInfo,
+    cg_image: crate::macos_overlay::SendCGImage,
+) -> Result<(), String> {
+    let win = if let Some(existing) = app.get_webview_window(LABEL_OVERLAY) {
+        existing
+    } else {
+        WebviewWindowBuilder::new(
+            app,
+            LABEL_OVERLAY,
+            WebviewUrl::App("index.html?window=overlay".into()),
+        )
+        .title("Gaze Capture")
+        .position(info.monitor_x as f64, info.monitor_y as f64)
+        .inner_size(info.monitor_width as f64, info.monitor_height as f64)
+        .decorations(false)
+        .transparent(true)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .shadow(false)
+        .visible(false)
+        .focused(false)
+        .content_protected(true)
+        .background_throttling(BackgroundThrottlingPolicy::Disabled)
+        .build()
+        .map_err(|e| format!("Failed to open capture overlay: {e}"))?
+    };
+
+    // Present native frozen backdrop immediately (~1-2ms) and emit session metadata after resize.
+    crate::macos_overlay::present_native_overlay(app, &win, cg_image, info.clone())?;
+    Ok(())
+}
+
+/// Opens or reuses the pre-warmed capture overlay window (non-macOS).
+#[cfg(not(target_os = "macos"))]
 pub fn open_overlay(app: &AppHandle, info: &OverlaySessionInfo) -> Result<bool, String> {
     if let Some(existing) = app.get_webview_window(LABEL_OVERLAY) {
-        #[cfg(target_os = "macos")]
-        {
-            let _ = existing.set_visible_on_all_workspaces(true);
-            let _ = existing.set_size(LogicalSize::new(
-                info.monitor_width as f64,
-                info.monitor_height as f64,
-            ));
-            let _ = existing.set_position(LogicalPosition::new(
-                info.monitor_x as f64,
-                info.monitor_y as f64,
-            ));
-        }
-
         // On Windows with mixed-DPI multi-monitor setups, physical pixel coords avoid scaling drift.
-        #[cfg(not(target_os = "macos"))]
-        {
-            let _ = existing.set_size(PhysicalSize::new(info.monitor_width, info.monitor_height));
-            let _ = existing.set_position(PhysicalPosition::new(info.monitor_x, info.monitor_y));
-        }
+        let _ = existing.set_size(PhysicalSize::new(info.monitor_width, info.monitor_height));
+        let _ = existing.set_position(PhysicalPosition::new(info.monitor_x, info.monitor_y));
 
         // Notify pre-warmed overlay webview to paint the new snapshot first, then show itself
         // so there is zero stale-frame flash.
@@ -201,27 +222,15 @@ pub fn open_overlay(app: &AppHandle, info: &OverlaySessionInfo) -> Result<bool, 
         return Ok(true);
     }
 
-    #[cfg(target_os = "macos")]
+    let s = info.scale_factor.max(1.0) as f64;
     let (wx, wy, ww, wh) = (
-        info.monitor_x as f64,
-        info.monitor_y as f64,
-        info.monitor_width as f64,
-        info.monitor_height as f64,
+        info.monitor_x as f64 / s,
+        info.monitor_y as f64 / s,
+        info.monitor_width as f64 / s,
+        info.monitor_height as f64 / s,
     );
 
-    #[cfg(not(target_os = "macos"))]
-    let (wx, wy, ww, wh) = {
-        let s = info.scale_factor.max(1.0) as f64;
-        (
-            info.monitor_x as f64 / s,
-            info.monitor_y as f64 / s,
-            info.monitor_width as f64 / s,
-            info.monitor_height as f64 / s,
-        )
-    };
-
-    #[allow(unused_mut)]
-    let mut builder = WebviewWindowBuilder::new(
+    let win = WebviewWindowBuilder::new(
         app,
         LABEL_OVERLAY,
         WebviewUrl::App("index.html?window=overlay".into()),
@@ -236,31 +245,25 @@ pub fn open_overlay(app: &AppHandle, info: &OverlaySessionInfo) -> Result<bool, 
     .resizable(false)
     .shadow(false)
     .visible(false)
-    .focused(false);
+    .focused(false)
+    .content_protected(true)
+    .background_throttling(BackgroundThrottlingPolicy::Disabled)
+    .build()
+    .map_err(|e| format!("Failed to open capture overlay: {e}"))?;
 
-    #[cfg(target_os = "macos")]
-    {
-        builder = builder.visible_on_all_workspaces(true);
-    }
-
-    let win = builder
-        .build()
-        .map_err(|e| format!("Failed to open capture overlay: {e}"))?;
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = win.set_size(PhysicalSize::new(info.monitor_width, info.monitor_height));
-        let _ = win.set_position(PhysicalPosition::new(info.monitor_x, info.monitor_y));
-    }
-    let _ = win;
+    let _ = win.set_size(PhysicalSize::new(info.monitor_width, info.monitor_height));
+    let _ = win.set_position(PhysicalPosition::new(info.monitor_x, info.monitor_y));
 
     Ok(false)
 }
 
-pub fn close_overlay(app: &AppHandle) {
+pub fn close_overlay(app: &AppHandle, seq: u64) {
     if let Some(win) = app.get_webview_window(LABEL_OVERLAY) {
+        #[cfg(target_os = "macos")]
+        crate::macos_overlay::hide_native_overlay(app, &win);
+        #[cfg(not(target_os = "macos"))]
         let _ = win.hide();
-        let _ = app.emit_to(LABEL_OVERLAY, "overlay-hidden", ());
+        let _ = app.emit_to(LABEL_OVERLAY, "overlay-hidden", seq);
     }
 }
 
