@@ -45,7 +45,7 @@ export function toolbarIconBtnClass({
    */
   variant?: "editor" | "inplace";
 }): string {
-  const base = `flex ${TOOLBAR_BTN_SIZE_CLS} items-center justify-center ${TOOLBAR_BTN_RADIUS_CLS} transition-all duration-100`;
+  const base = `flex ${TOOLBAR_BTN_SIZE_CLS} appearance-none items-center justify-center ${TOOLBAR_BTN_RADIUS_CLS} outline-none transition-all duration-100 focus:outline-none`;
   if (disabled) {
     return `${base} cursor-default ${
       variant === "inplace" ? "text-[#26262B]/30" : "text-[#27272A]/30"
@@ -76,7 +76,7 @@ export function toolbarMenuItemClass(
   destructive = false,
 ): string {
   const base =
-    "flex w-full cursor-pointer items-center justify-between px-3 py-[6px] text-left text-[12px] transition-colors disabled:cursor-default disabled:opacity-40";
+    "flex w-full appearance-none cursor-pointer items-center justify-between px-3 py-[6px] text-left text-[12px] outline-none transition-colors focus:outline-none disabled:cursor-default disabled:opacity-40";
   if (destructive) {
     return `${base} text-[#D70015] hover:bg-[#FF3B30]/[0.07]`;
   }
@@ -100,14 +100,14 @@ export const OPTIONS_ROW_CLS = "flex items-center gap-[10px]";
 /** Vertical hairline divider inside ToolOptionsBar (16px tall everywhere). */
 export const OPTIONS_DIVIDER_CLS = "h-[16px] w-px shrink-0 bg-black/[0.1]";
 
-/** Segmented control outer track (24px tall, 2px inner padding). */
+/** Segmented control outer track (24px tall, 2px inner padding, 2px gap between pills). */
 export const OPTIONS_SEGMENT_TRACK_CLS =
-  "inline-flex h-[24px] items-center rounded-full bg-black/[0.06] p-[2px]";
+  "inline-flex h-[24px] items-center gap-[2px] rounded-full bg-black/[0.06] p-[2px]";
 
 /** Segmented control button (20px tall, consistent 11.5px medium text to prevent width jitter). */
 export function optionsSegmentBtnClass(active: boolean, compact = false): string {
   const padding = compact ? "min-w-[24px] px-[7px]" : "px-[10px]";
-  const base = `inline-flex h-[20px] cursor-pointer items-center justify-center rounded-full ${padding} text-[11.5px] font-medium leading-none transition-all duration-100`;
+  const base = `inline-flex h-[20px] appearance-none cursor-pointer items-center justify-center rounded-full ${padding} text-[11.5px] font-medium leading-none outline-none transition-all duration-100 focus:outline-none`;
   return active
     ? `${base} bg-white text-[#141416] shadow-[0_1px_2px_rgba(0,0,0,0.08),0_0_0_0.5px_rgba(0,0,0,0.04)]`
     : `${base} text-[#52525B] hover:text-[#141416]`;
@@ -116,7 +116,7 @@ export function optionsSegmentBtnClass(active: boolean, compact = false): string
 /** Standalone toggle pill (e.g. Frame On/Off, Shadow) — 24px tall. */
 export function optionsTogglePillClass(active: boolean): string {
   const base =
-    "inline-flex h-[24px] cursor-pointer items-center justify-center rounded-full px-[10px] text-[11.5px] font-medium leading-none transition-all duration-100 active:scale-[0.97]";
+    "inline-flex h-[24px] appearance-none cursor-pointer items-center justify-center rounded-full px-[10px] text-[11.5px] font-medium leading-none outline-none transition-all duration-100 focus:outline-none active:scale-[0.97]";
   return active
     ? `${base} ${ACCENT_ACTIVE_CLS}`
     : `${base} bg-black/[0.06] text-[#52525B] hover:bg-black/[0.09] hover:text-[#141416]`;
@@ -125,7 +125,7 @@ export function optionsTogglePillClass(active: boolean): string {
 /** Pill action button (e.g. Crop Apply / Cancel) — 24px tall. */
 export function optionsActionPillClass(variant: "primary" | "secondary"): string {
   const base =
-    "inline-flex h-[24px] cursor-pointer items-center justify-center gap-1 rounded-full px-[10px] text-[11.5px] font-medium leading-none transition-all duration-100 active:scale-[0.97]";
+    "inline-flex h-[24px] appearance-none cursor-pointer items-center justify-center gap-1 rounded-full px-[10px] text-[11.5px] font-medium leading-none outline-none transition-all duration-100 focus:outline-none active:scale-[0.97]";
   return variant === "primary"
     ? `${base} mac-blue-fill text-white antialiased hover:brightness-105`
     : `${base} bg-black/[0.06] text-[#2C2C30] hover:bg-black/[0.1] hover:text-[#141416]`;
@@ -134,7 +134,7 @@ export function optionsActionPillClass(variant: "primary" | "secondary"): string
 /** Circular color / backdrop swatch (18×18px everywhere). */
 export function optionsSwatchClass(active: boolean): string {
   const base =
-    "h-[18px] w-[18px] shrink-0 cursor-pointer rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.16)] transition-transform duration-100";
+    "h-[18px] w-[18px] shrink-0 appearance-none cursor-pointer rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.16)] outline-none transition-transform duration-100 focus:outline-none";
   return active
     ? `${base} ring-2 ring-[#007AFF] ring-offset-1`
     : `${base} hover:scale-110`;
@@ -149,7 +149,7 @@ export function optionsCircleIconBtnClass({
   destructive?: boolean;
 } = {}): string {
   const base =
-    "flex h-[24px] w-[24px] shrink-0 cursor-pointer items-center justify-center rounded-full transition-all duration-100 active:scale-[0.95]";
+    "flex h-[24px] w-[24px] shrink-0 appearance-none cursor-pointer items-center justify-center rounded-full outline-none transition-all duration-100 focus:outline-none active:scale-[0.95]";
   if (destructive) {
     return `${base} text-[#D70015] hover:bg-[#FF3B30]/[0.08]`;
   }

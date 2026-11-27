@@ -96,9 +96,31 @@ export function EditorWindow({
    */
   inplace?: InplaceSession;
 }) {
+  const inplaceRootRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const revealedRef = useRef(false);
+
+  // When the in-place overlay window becomes key, WKWebView auto-focuses the first
+  // button in the DOM (e.g. Blur inside ToolOptionsBar) and paints a native focus ring
+  // that stays stuck because toolbar clicks preventDefault(). Redirect focus to the
+  // non-visual root container unless the user is typing in an input/textarea.
+  useEffect(() => {
+    if (!inplace) return;
+    const focusRoot = () => {
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLElement &&
+        (active.tagName === "TEXTAREA" || active.tagName === "INPUT")
+      ) {
+        return;
+      }
+      inplaceRootRef.current?.focus({ preventScroll: true });
+    };
+    focusRoot();
+    window.addEventListener("focus", focusRoot);
+    return () => window.removeEventListener("focus", focusRoot);
+  }, [inplace]);
   // Direct DOM refs for zero-rerender 120fps live color inspector
   const colorDotRef = useRef<HTMLSpanElement | null>(null);
   const colorHexRef = useRef<HTMLSpanElement | null>(null);
@@ -2028,7 +2050,9 @@ export function EditorWindow({
 
     return (
       <div
-        className="fixed inset-0 select-none overflow-hidden text-[#141416]"
+        ref={inplaceRootRef}
+        tabIndex={-1}
+        className="fixed inset-0 select-none overflow-hidden text-[#141416] outline-none"
         onContextMenu={(e) => e.preventDefault()}
       >
         <div
