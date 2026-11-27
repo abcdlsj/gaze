@@ -265,13 +265,48 @@ pub fn start_scrolling_capture(
         )
     };
 
-    let Some((cancel_flag, running_flag)) = state.scrolling.begin() else {
-        return Err("Scrolling capture is already running".to_string());
-    };
-
     let seq = state.overlay_seq.load(Ordering::SeqCst);
     windows::close_overlay(&app, seq);
     state.store.lock().overlay = None;
+
+    start_scrolling_capture_on_monitor(
+        app,
+        state,
+        monitor_id,
+        monitor_x,
+        monitor_y,
+        monitor_w,
+        monitor_h,
+        scale_factor,
+        x,
+        y,
+        width,
+        height,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn start_scrolling_capture_on_monitor(
+    app: AppHandle,
+    state: Arc<AppState>,
+    monitor_id: u32,
+    monitor_x: i32,
+    monitor_y: i32,
+    monitor_w: u32,
+    monitor_h: u32,
+    scale_factor: f32,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    if width < 32.0 || height < 48.0 {
+        return Err("Select a larger scrollable region (at least 32×48)".to_string());
+    }
+
+    let Some((cancel_flag, running_flag)) = state.scrolling.begin() else {
+        return Err("Scrolling capture is already running".to_string());
+    };
 
     let settings = state.settings.lock().clone();
     let max_height = settings.scrolling_max_height;

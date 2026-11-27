@@ -34,6 +34,8 @@ pub struct AppState {
     pub overlay_shown_seq: AtomicU64,
     pub overlay_starting: AtomicBool,
     pub hotkeys_suspended: AtomicBool,
+    /// Active in-place edit session (selection handed from the native overlay to a webview).
+    pub inplace: Mutex<Option<InplaceSession>>,
 }
 
 impl AppState {
@@ -47,6 +49,7 @@ impl AppState {
             overlay_shown_seq: AtomicU64::new(0),
             overlay_starting: AtomicBool::new(false),
             hotkeys_suspended: AtomicBool::new(false),
+            inplace: Mutex::new(None),
         }
     }
 }
@@ -128,25 +131,9 @@ pub fn start_overlay_capture_on_monitor(
 
     #[cfg(target_os = "macos")]
     {
-        // Overlay uses `NSWindowSharingType::None`, so it is automatically excluded from
-        // `CGWindowListCreateImage` without needing to hide & sleep first.
-        let captured = capture::capture_overlay_session_macos(seq, mode, monitor_index)?;
-        let info = captured.session.info();
-        let cg_for_decode = captured.cg_image.clone();
-        let rgba_setter = captured.rgba_setter;
-
-        // Store the session first so immediate IPC calls from the WebView never race.
-        state.store.lock().overlay = Some(captured.session);
+        let _ = monitor_index;
         state.overlay_shown_seq.store(seq, Ordering::SeqCst);
-
-        // Present native CALayer frozen backdrop immediately (~1-2ms).
-        windows::open_overlay_native(app, &info, captured.cg_image)?;
-
-        // Decode CGImage -> RgbaImage in parallel on a worker thread for loupe & cropping.
-        std::thread::spawn(move || {
-            let decoded = macos_overlay::cg_image_to_rgba(&cg_for_decode.0, true);
-            rgba_setter.resolve(decoded);
-        });
+        macos_overlay::start_native_overlay(app, seq, mode)?;
         Ok(())
     }
 
@@ -434,10 +421,162 @@ fn cancel_overlay(app: AppHandle, state: State<'_, Arc<AppState>>) {
 #[cfg(target_os = "macos")]
 pub fn dismiss_overlay_from_native(app: &AppHandle) {
     let state = app.state::<Arc<AppState>>();
-    let had_overlay = state.store.lock().overlay.take().is_some();
-    if had_overlay {
-        let seq = state.overlay_seq.load(Ordering::SeqCst);
-        windows::close_overlay(app, seq);
+    state.store.lock().overlay = None;
+    macos_overlay::dismiss_native_overlay(app, true);
+}
+
+/// Finalizes a cropped area capture directly from the native macOS overlay on a background thread.
+#[cfg(target_os = "macos")]
+pub fn complete_native_area_capture(
+    app: AppHandle,
+    image: image::RgbaImage,
+    scale: f32,
+    bounds: capture::MonitorBounds,
+    action: String,
+) {
+    let state = app.state::<Arc<AppState>>();
+    let meta = state
+        .store
+        .lock()
+        .insert(image.clone(), scale, "area", Some(bounds));
+    let settings = state.settings.lock().clone();
+
+    let res: Result<(), String> = match action.as_str() {
+        "done" => finish_done_action(&app, &state, &image, &meta, Some(bounds)),
+        "copy" => clipboard::copy_rgba_image(&image),
+        "save" => capture::save_image_file(&image, scale, &settings, None).map(|_| ()),
+        "pin" => windows::open_pin(&app, &meta.id, meta.width, meta.height, meta.scale_factor),
+        "editor" => windows::open_editor(
+            &app,
+            &meta.id,
+            meta.width,
+            meta.height,
+            meta.scale_factor,
+            Some(bounds),
+        ),
+        _ => finalize_capture(&app, &state, &meta, true),
+    };
+    if let Err(err) = res {
+        eprintln!("[gaze] native area capture action '{action}' failed: {err}");
+    }
+}
+
+/// Finalizes a window capture directly from the native macOS overlay on a background thread.
+#[cfg(target_os = "macos")]
+#[allow(clippy::too_many_arguments)]
+pub fn complete_native_window_capture(
+    app: AppHandle,
+    window_id: u32,
+    abs_bounds: Option<(i32, i32, u32, u32)>,
+    scale: f32,
+    bounds: capture::MonitorBounds,
+    fallback_crop: Option<image::RgbaImage>,
+    backdrop_image: Option<image::RgbaImage>,
+    action: String,
+) {
+    let state = app.state::<Arc<AppState>>();
+    let settings = state.settings.lock().clone();
+
+    let img_res: Result<image::RgbaImage, String> =
+        match macos_overlay::capture_window_cg_rgba(window_id, abs_bounds) {
+            Ok(raw_img) => {
+                let win_x = abs_bounds.map(|b| b.0);
+                let win_y = abs_bounds.map(|b| b.1);
+                let temp_session = backdrop_image.map(|bg| capture::OverlaySession {
+                    seq: 0,
+                    monitor_id: 0,
+                    monitor_name: String::new(),
+                    monitor_index: 0,
+                    monitor_count: 1,
+                    monitor_x: bounds.x,
+                    monitor_y: bounds.y,
+                    monitor_width: bounds.width,
+                    monitor_height: bounds.height,
+                    image_width: bg.width(),
+                    image_height: bg.height(),
+                    scale_factor: scale,
+                    image: capture::DeferredRgbaImage::ready(bg),
+                    windows: Vec::new(),
+                    initial_mode: "area".to_string(),
+                    initial_cursor_x: None,
+                    initial_cursor_y: None,
+                    has_native_backdrop: true,
+                });
+                Ok(capture::apply_window_background(
+                    raw_img,
+                    settings.window_background,
+                    &settings.solid_background_color,
+                    scale,
+                    temp_session.as_ref(),
+                    win_x,
+                    win_y,
+                ))
+            }
+            Err(err) => fallback_crop.ok_or(err),
+        };
+
+    let img = match img_res {
+        Ok(img) => img,
+        Err(err) => {
+            eprintln!("[gaze] native window capture failed: {err}");
+            return;
+        }
+    };
+
+    let meta = state
+        .store
+        .lock()
+        .insert(img.clone(), scale, "window", Some(bounds));
+
+    let res: Result<(), String> = match action.as_str() {
+        "done" => finish_done_action(&app, &state, &img, &meta, Some(bounds)),
+        "copy" => clipboard::copy_rgba_image(&img),
+        "save" => capture::save_image_file(&img, scale, &settings, None).map(|_| ()),
+        "pin" => windows::open_pin(&app, &meta.id, meta.width, meta.height, meta.scale_factor),
+        "editor" => windows::open_editor(
+            &app,
+            &meta.id,
+            meta.width,
+            meta.height,
+            meta.scale_factor,
+            Some(bounds),
+        ),
+        _ => finalize_capture(&app, &state, &meta, false),
+    };
+    if let Err(err) = res {
+        eprintln!("[gaze] native window capture action '{action}' failed: {err}");
+    }
+}
+
+/// Launches scrolling capture directly from the native macOS overlay on the chosen display.
+#[cfg(target_os = "macos")]
+#[allow(clippy::too_many_arguments)]
+pub fn complete_native_scroll_capture(
+    app: AppHandle,
+    monitor_id: u32,
+    bounds: capture::MonitorBounds,
+    scale: f32,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) {
+    let state = app.state::<Arc<AppState>>().inner().clone();
+    if let Err(err) = scrolling::start_scrolling_capture_on_monitor(
+        app,
+        state,
+        monitor_id,
+        bounds.x,
+        bounds.y,
+        bounds.width,
+        bounds.height,
+        scale,
+        x,
+        y,
+        width,
+        height,
+    ) {
+        eprintln!("[gaze] native scrolling capture failed: {err}");
     }
 }
 
@@ -772,6 +911,239 @@ fn stop_scrolling_capture(state: State<'_, Arc<AppState>>) {
     state.scrolling.request_stop();
 }
 
+// ============================================================================
+// In-place (Snipaste-style) editing on top of the frozen capture overlay
+// ============================================================================
+
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+pub struct InplaceRect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+impl InplaceRect {
+    pub fn from_xywh(x: f64, y: f64, width: f64, height: f64) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+}
+
+/// Display-local geometry (points) shared by the native toolbar and the webview editor.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct InplaceGeometry {
+    pub view_width: f64,
+    pub view_height: f64,
+    pub selection: InplaceRect,
+    pub toolbar: InplaceRect,
+    /// "below" | "above" | "inside": where the toolbar sits relative to the selection.
+    pub toolbar_side: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct InplaceSession {
+    pub label: String,
+    pub capture_id: String,
+    pub scale_factor: f32,
+    pub tool: String,
+    #[serde(flatten)]
+    pub geometry: InplaceGeometry,
+    #[serde(skip)]
+    pub monitor_bounds: capture::MonitorBounds,
+}
+
+/// Called on a worker thread once the native overlay has cropped the selection: stores the
+/// crop, makes sure the (normally prewarmed) webview exists, and hands it the session.
+#[cfg(target_os = "macos")]
+pub fn begin_inplace_session(
+    app: AppHandle,
+    label: String,
+    image: image::RgbaImage,
+    scale: f32,
+    bounds: capture::MonitorBounds,
+    geometry: InplaceGeometry,
+    tool: String,
+) {
+    use tauri::Emitter;
+    let state = app.state::<Arc<AppState>>();
+    let meta = state.store.lock().insert(image, scale, "area", Some(bounds));
+    let session = InplaceSession {
+        label: label.clone(),
+        capture_id: meta.id,
+        scale_factor: scale,
+        tool,
+        geometry,
+        monitor_bounds: bounds,
+    };
+    *state.inplace.lock() = Some(session.clone());
+
+    if let Err(err) = windows::ensure_inplace_editor(&app, &label, bounds) {
+        eprintln!("[gaze] failed to create in-place editor: {err}");
+        return; // The native ready-timeout falls back to the standalone editor.
+    }
+    macos_overlay::place_inplace_window(&app, label.clone());
+    // The page also polls `get_inplace_session` on mount, so a session emitted before the
+    // listener is registered is never lost.
+    let _ = app.emit_to(label.as_str(), "inplace-session", &session);
+}
+
+/// Opens the standalone editor for an in-place session that never became ready.
+#[cfg(target_os = "macos")]
+pub fn inplace_fallback_to_editor(app: &AppHandle, label: &str) {
+    let state = app.state::<Arc<AppState>>();
+    let session = take_inplace_session(&state, label);
+    if let Some(win) = app.get_webview_window(label) {
+        let _ = win.destroy();
+    }
+    let Some(session) = session else {
+        return;
+    };
+    let meta = state.store.lock().get(&session.capture_id).map(|c| c.meta());
+    if let Some(meta) = meta {
+        let app = app.clone();
+        std::thread::spawn(move || {
+            let _ = windows::open_editor(
+                &app,
+                &meta.id,
+                meta.width,
+                meta.height,
+                meta.scale_factor,
+                Some(session.monitor_bounds),
+            );
+        });
+    }
+}
+
+fn take_inplace_session(state: &AppState, label: &str) -> Option<InplaceSession> {
+    let mut slot = state.inplace.lock();
+    if slot.as_ref().is_some_and(|s| s.label == label) {
+        slot.take()
+    } else {
+        None
+    }
+}
+
+/// "Done" (✓ / Enter / double-click): copy to the clipboard, plus the optional
+/// save / thumbnail steps from Preferences → General → After capture.
+pub fn finish_done_action(
+    app: &AppHandle,
+    state: &AppState,
+    image: &image::RgbaImage,
+    meta: &CaptureMeta,
+    bounds: Option<capture::MonitorBounds>,
+) -> Result<(), String> {
+    let settings = state.settings.lock().clone();
+    clipboard::copy_rgba_image(image)?;
+    if settings.after_screenshot_save {
+        capture::save_image_file(image, meta.scale_factor, &settings, None)?;
+    }
+    if settings.after_screenshot_show && settings.after_area_crop == AfterAreaCrop::Thumbnail {
+        windows::open_thumbnail(app, &meta.id, bounds, meta.scale_factor)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn get_inplace_session(
+    window: tauri::WebviewWindow,
+    state: State<'_, Arc<AppState>>,
+) -> Option<InplaceSession> {
+    state
+        .inplace
+        .lock()
+        .as_ref()
+        .filter(|s| s.label == window.label())
+        .cloned()
+}
+
+#[tauri::command]
+fn inplace_ready(window: tauri::WebviewWindow) {
+    #[cfg(target_os = "macos")]
+    macos_overlay::inplace_editor_ready(window.app_handle(), window.label().to_string());
+    #[cfg(not(target_os = "macos"))]
+    let _ = window;
+}
+
+/// Hides the overlay and the in-place editor immediately (before the possibly slow export),
+/// restoring focus to the previous app when the action does not open a new Gaze window.
+#[tauri::command]
+fn inplace_hide(window: tauri::WebviewWindow, action: String) {
+    let restore_focus = matches!(action.as_str(), "copy" | "save" | "done" | "cancel");
+    let app = window.app_handle().clone();
+    app.state::<Arc<AppState>>().store.lock().overlay = None;
+    #[cfg(target_os = "macos")]
+    macos_overlay::dismiss_native_overlay(&app, restore_focus);
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = restore_focus;
+        let _ = window.hide();
+    }
+}
+
+/// Completes an in-place edit. `png_base64` carries the annotated export; when it is absent
+/// (no annotations) the untouched crop stored at session start is used.
+#[tauri::command]
+fn inplace_finish(
+    window: tauri::WebviewWindow,
+    state: State<'_, Arc<AppState>>,
+    action: String,
+    png_base64: Option<String>,
+) -> Result<(), String> {
+    let app = window.app_handle().clone();
+    let session = take_inplace_session(&state, window.label());
+    let result = (|| -> Result<(), String> {
+        if action == "cancel" {
+            return Ok(());
+        }
+        let session = session.ok_or_else(|| "No in-place edit session".to_string())?;
+        let scale = session.scale_factor;
+        let bounds = Some(session.monitor_bounds);
+        let (image, meta) = match png_base64 {
+            Some(b64) => {
+                let bytes = BASE64
+                    .decode(b64.as_bytes())
+                    .map_err(|e| format!("Invalid base64 image payload: {e}"))?;
+                let img = image::load_from_memory(&bytes)
+                    .map_err(|e| format!("Failed to decode edited image: {e}"))?
+                    .to_rgba8();
+                let meta = state.store.lock().insert(img.clone(), scale, "area", bounds);
+                (img, meta)
+            }
+            None => state
+                .store
+                .lock()
+                .get(&session.capture_id)
+                .map(|c| (c.image.clone(), c.meta()))
+                .ok_or_else(|| "In-place capture not found".to_string())?,
+        };
+        let settings = state.settings.lock().clone();
+        match action.as_str() {
+            "done" | "copy" => finish_done_action(&app, &state, &image, &meta, bounds),
+            "save" => capture::save_image_file(&image, scale, &settings, None).map(|_| ()),
+            "pin" => windows::open_pin(&app, &meta.id, meta.width, meta.height, meta.scale_factor),
+            "editor" => windows::open_editor(
+                &app,
+                &meta.id,
+                meta.width,
+                meta.height,
+                meta.scale_factor,
+                bounds,
+            ),
+            other => Err(format!("Unknown in-place action '{other}'")),
+        }
+    })();
+    let _ = window.destroy();
+    if let Err(err) = &result {
+        eprintln!("[gaze] in-place action '{action}' failed: {err}");
+    }
+    result
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app_state = Arc::new(AppState::new());
@@ -784,6 +1156,23 @@ pub fn run() {
             None,
         ))
         .manage(app_state.clone())
+        .on_window_event(|window, event| {
+            // If Preferences closes while recording a hotkey, never leave global hotkeys suspended.
+            if window.label() == windows::LABEL_PREFERENCES
+                && matches!(
+                    event,
+                    tauri::WindowEvent::Destroyed | tauri::WindowEvent::CloseRequested { .. }
+                )
+            {
+                let app = window.app_handle();
+                let state = app.state::<Arc<AppState>>();
+                if state.hotkeys_suspended.swap(false, Ordering::SeqCst) {
+                    let hotkeys_cfg = state.settings.lock().hotkeys.clone();
+                    let errors = hotkeys::sync_hotkeys(app, &hotkeys_cfg, dispatch_capture_action);
+                    *state.hotkey_errors.lock() = errors;
+                }
+            }
+        })
         .setup(move |app| {
             #[cfg(target_os = "macos")]
             {
@@ -840,6 +1229,10 @@ pub fn run() {
             open_external_url,
             start_scrolling_capture,
             stop_scrolling_capture,
+            get_inplace_session,
+            inplace_ready,
+            inplace_hide,
+            inplace_finish,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Gaze");

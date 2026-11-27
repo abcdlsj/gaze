@@ -1,6 +1,10 @@
-use crate::capture::{MonitorBounds, OverlaySessionInfo};
+use crate::capture::MonitorBounds;
+#[cfg(not(target_os = "macos"))]
+use crate::capture::OverlaySessionInfo;
 use tauri::utils::config::BackgroundThrottlingPolicy;
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+#[cfg(not(target_os = "macos"))]
+use tauri::Emitter;
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
 #[cfg(target_os = "macos")]
 use tauri::TitleBarStyle;
@@ -14,31 +18,37 @@ pub const LABEL_THUMBNAIL: &str = "thumbnail";
 pub const LABEL_SCROLL_HUD: &str = "scroll-hud";
 
 pub fn prewarm_overlay(app: &AppHandle) {
-    if app.get_webview_window(LABEL_OVERLAY).is_some() {
-        return;
+    // On macOS the capture overlay is 100% native AppKit/CoreAnimation (NSPanel + CALayer),
+    // so we never spawn or keep an idle WKWebView process for captures.
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app;
     }
-    let builder = WebviewWindowBuilder::new(
-        app,
-        LABEL_OVERLAY,
-        WebviewUrl::App("index.html?window=overlay".into()),
-    )
-    .title("Gaze Capture")
-    .inner_size(100.0, 100.0)
-    .decorations(false)
-    .transparent(true)
-    .always_on_top(true)
-    .skip_taskbar(true)
-    .resizable(false)
-    .shadow(false)
-    .visible(false)
-    .focused(false)
-    .content_protected(true)
-    .background_throttling(BackgroundThrottlingPolicy::Disabled);
 
-    if let Ok(win) = builder.build() {
-        #[cfg(target_os = "macos")]
-        crate::macos_overlay::configure_overlay_window(&win);
-        let _ = win;
+    #[cfg(not(target_os = "macos"))]
+    {
+        if app.get_webview_window(LABEL_OVERLAY).is_some() {
+            return;
+        }
+        let builder = WebviewWindowBuilder::new(
+            app,
+            LABEL_OVERLAY,
+            WebviewUrl::App("index.html?window=overlay".into()),
+        )
+        .title("Gaze Capture")
+        .inner_size(100.0, 100.0)
+        .decorations(false)
+        .transparent(true)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .shadow(false)
+        .visible(false)
+        .focused(false)
+        .content_protected(true)
+        .background_throttling(BackgroundThrottlingPolicy::Disabled);
+
+        let _ = builder.build();
     }
 }
 
@@ -170,41 +180,37 @@ pub fn open_editor(
     Ok(())
 }
 
-/// Opens or reuses the pre-warmed capture overlay on macOS with a hardware-accelerated native
-/// `CALayer` frozen desktop backdrop, above-menubar window level, and fullscreen-space support.
-#[cfg(target_os = "macos")]
-pub fn open_overlay_native(
+/// Creates (hidden) the transparent, display-sized webview that hosts the in-place editor
+/// on top of the frozen native capture overlay. No-op if it already exists.
+pub fn ensure_inplace_editor(
     app: &AppHandle,
-    info: &OverlaySessionInfo,
-    cg_image: crate::macos_overlay::SendCGImage,
+    label: &str,
+    bounds: MonitorBounds,
 ) -> Result<(), String> {
-    let win = if let Some(existing) = app.get_webview_window(LABEL_OVERLAY) {
-        existing
-    } else {
-        WebviewWindowBuilder::new(
-            app,
-            LABEL_OVERLAY,
-            WebviewUrl::App("index.html?window=overlay".into()),
-        )
-        .title("Gaze Capture")
-        .position(info.monitor_x as f64, info.monitor_y as f64)
-        .inner_size(info.monitor_width as f64, info.monitor_height as f64)
-        .decorations(false)
-        .transparent(true)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .resizable(false)
-        .shadow(false)
-        .visible(false)
-        .focused(false)
-        .content_protected(true)
-        .background_throttling(BackgroundThrottlingPolicy::Disabled)
-        .build()
-        .map_err(|e| format!("Failed to open capture overlay: {e}"))?
-    };
-
-    // Present native frozen backdrop immediately (~1-2ms) and emit session metadata after resize.
-    crate::macos_overlay::present_native_overlay(app, &win, cg_image, info.clone())?;
+    if app.get_webview_window(label).is_some() {
+        return Ok(());
+    }
+    WebviewWindowBuilder::new(
+        app,
+        label,
+        WebviewUrl::App("index.html?window=inplace".into()),
+    )
+    .title("Gaze Edit")
+    .position(bounds.x as f64, bounds.y as f64)
+    .inner_size(bounds.width as f64, bounds.height as f64)
+    .decorations(false)
+    .transparent(true)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .resizable(false)
+    .shadow(false)
+    .visible(false)
+    .focused(false)
+    .content_protected(true)
+    // Export after hiding must keep running at full speed.
+    .background_throttling(BackgroundThrottlingPolicy::Disabled)
+    .build()
+    .map_err(|e| format!("Failed to create in-place editor: {e}"))?;
     Ok(())
 }
 
@@ -258,12 +264,18 @@ pub fn open_overlay(app: &AppHandle, info: &OverlaySessionInfo) -> Result<bool, 
 }
 
 pub fn close_overlay(app: &AppHandle, seq: u64) {
-    if let Some(win) = app.get_webview_window(LABEL_OVERLAY) {
-        #[cfg(target_os = "macos")]
-        crate::macos_overlay::hide_native_overlay(app, &win);
-        #[cfg(not(target_os = "macos"))]
-        let _ = win.hide();
-        let _ = app.emit_to(LABEL_OVERLAY, "overlay-hidden", seq);
+    #[cfg(target_os = "macos")]
+    {
+        let _ = seq;
+        crate::macos_overlay::dismiss_native_overlay(app, true);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        if let Some(win) = app.get_webview_window(LABEL_OVERLAY) {
+            let _ = win.hide();
+            let _ = app.emit_to(LABEL_OVERLAY, "overlay-hidden", seq);
+        }
     }
 }
 

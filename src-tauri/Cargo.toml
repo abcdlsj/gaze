@@ -34,11 +34,33 @@ parking_lot = "0.12"
 block2 = "0.6"
 core-graphics = { version = "0.24", features = ["highsierra"] }
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", features = ["block2", "NSApplication", "NSColor", "NSEvent", "NSGraphics", "NSResponder", "NSRunningApplication", "NSView", "NSWindow", "NSWorkspace"] }
+objc2-app-kit = { version = "0.3", features = [
+    "block2",
+    "NSApplication",
+    "NSAttributedString",
+    "NSBezierPath",
+    "NSColor",
+    "NSCursor",
+    "NSEvent",
+    "NSFont",
+    "NSFontDescriptor",
+    "NSGraphics",
+    "NSGraphicsContext",
+    "NSImage",
+    "NSPanel",
+    "NSResponder",
+    "NSRunningApplication",
+    "NSScreen",
+    "NSStringDrawing",
+    "NSTrackingArea",
+    "NSView",
+    "NSWindow",
+    "NSWorkspace",
+] }
 objc2-core-foundation = { version = "0.3", features = ["CFArray", "CFBase", "CFData", "CFDictionary", "CFNumber", "CFString", "CFCGTypes"] }
-objc2-core-graphics = { version = "0.3", features = ["CGDataProvider", "CGDirectDisplay", "CGGeometry", "CGImage", "CGWindow", "CGWindowLevel"] }
-objc2-foundation = { version = "0.3", features = ["block2", "NSArray", "NSGeometry", "NSNotification", "NSObject", "NSProcessInfo", "NSString"] }
-objc2-quartz-core = { version = "0.3", features = ["CALayer", "CATransaction"] }
+objc2-core-graphics = { version = "0.3", features = ["CGColor", "CGContext", "CGDataProvider", "CGDirectDisplay", "CGGeometry", "CGImage", "CGPath", "CGWindow", "CGWindowLevel"] }
+objc2-foundation = { version = "0.3", features = ["block2", "NSArray", "NSAttributedString", "NSDictionary", "NSGeometry", "NSNotification", "NSObject", "NSProcessInfo", "NSString", "NSValue"] }
+objc2-quartz-core = { version = "0.3", features = ["CALayer", "CAShapeLayer", "CATransaction"] }
 
 [profile.release]
 panic = "abort"

@@ -329,95 +329,6 @@ pub fn find_monitor_by_id(monitor_id: u32) -> Result<Monitor, String> {
         .ok_or_else(|| format!("Monitor {monitor_id} not found"))
 }
 
-#[cfg(target_os = "macos")]
-pub struct CapturedOverlay {
-    pub session: OverlaySession,
-    pub cg_image: crate::macos_overlay::SendCGImage,
-    pub rgba_setter: DeferredRgbaSetter,
-}
-
-#[cfg(target_os = "macos")]
-pub fn capture_overlay_session_macos(
-    seq: u64,
-    initial_mode: &str,
-    monitor_index_override: Option<usize>,
-) -> Result<CapturedOverlay, String> {
-    let cursor = get_cursor_position();
-    let (monitor, monitor_index, monitor_count) = match monitor_index_override {
-        Some(idx) => find_monitor_by_index(idx)?,
-        None => find_active_monitor()?,
-    };
-    let monitor_id = monitor.id().map_err(|e| e.to_string())?;
-    let monitor_name = monitor
-        .friendly_name()
-        .or_else(|_| monitor.name())
-        .unwrap_or_else(|_| format!("Display {}", monitor_index + 1));
-    let monitor_x = monitor.x().map_err(|e| e.to_string())?;
-    let monitor_y = monitor.y().map_err(|e| e.to_string())?;
-    let monitor_width = monitor.width().map_err(|e| e.to_string())?;
-    let monitor_height = monitor.height().map_err(|e| e.to_string())?;
-    let scale_factor = monitor.scale_factor().unwrap_or(1.0).max(1.0);
-
-    // Grab the hardware-backed CGImage directly (~15-25ms) with zero CPU copy.
-    let cg_image = crate::macos_overlay::capture_display_cg_image(
-        monitor_x,
-        monitor_y,
-        monitor_width,
-        monitor_height,
-    )?;
-    let image_width = objc2_core_graphics::CGImage::width(Some(&cg_image.0)) as u32;
-    let image_height = objc2_core_graphics::CGImage::height(Some(&cg_image.0)) as u32;
-
-    // Single-pass CGWindowListCopyWindowInfo (< 1ms) so Snipaste hover highlight is instant.
-    let windows = crate::macos_overlay::enumerate_monitor_windows_fast(
-        monitor_x,
-        monitor_y,
-        monitor_width,
-        monitor_height,
-    );
-
-    let (initial_cursor_x, initial_cursor_y) = match cursor {
-        Some((cx, cy))
-            if cx >= monitor_x
-                && cx < monitor_x + monitor_width as i32
-                && cy >= monitor_y
-                && cy < monitor_y + monitor_height as i32 =>
-        {
-            (Some((cx - monitor_x) as f64), Some((cy - monitor_y) as f64))
-        }
-        _ => (None, None),
-    };
-
-    let (deferred_img, rgba_setter) = DeferredRgbaImage::pending();
-
-    let session = OverlaySession {
-        seq,
-        monitor_id,
-        monitor_name,
-        monitor_index,
-        monitor_count,
-        monitor_x,
-        monitor_y,
-        monitor_width,
-        monitor_height,
-        image_width,
-        image_height,
-        scale_factor,
-        image: deferred_img,
-        windows,
-        initial_mode: initial_mode.to_string(),
-        initial_cursor_x,
-        initial_cursor_y,
-        has_native_backdrop: true,
-    };
-
-    Ok(CapturedOverlay {
-        session,
-        cg_image,
-        rgba_setter,
-    })
-}
-
 #[cfg(not(target_os = "macos"))]
 pub fn capture_overlay_session(
     seq: u64,
@@ -559,18 +470,25 @@ pub fn pack_raw_rgba(img: &RgbaImage) -> Vec<u8> {
 }
 
 pub fn capture_fullscreen() -> Result<(RgbaImage, f32, MonitorBounds), String> {
-    let (monitor, _, _) = find_active_monitor()?;
-    let scale = monitor.scale_factor().unwrap_or(1.0).max(1.0);
-    let bounds = MonitorBounds {
-        x: monitor.x().unwrap_or(0),
-        y: monitor.y().unwrap_or(0),
-        width: monitor.width().unwrap_or(1440),
-        height: monitor.height().unwrap_or(900),
-    };
-    let image = monitor
-        .capture_image()
-        .map_err(|e| format!("Fullscreen capture failed: {e}"))?;
-    Ok((image, scale, bounds))
+    #[cfg(target_os = "macos")]
+    {
+        crate::macos_overlay::capture_active_display_rgba()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let (monitor, _, _) = find_active_monitor()?;
+        let scale = monitor.scale_factor().unwrap_or(1.0).max(1.0);
+        let bounds = MonitorBounds {
+            x: monitor.x().unwrap_or(0),
+            y: monitor.y().unwrap_or(0),
+            width: monitor.width().unwrap_or(1440),
+            height: monitor.height().unwrap_or(900),
+        };
+        let image = monitor
+            .capture_image()
+            .map_err(|e| format!("Fullscreen capture failed: {e}"))?;
+        Ok((image, scale, bounds))
+    }
 }
 
 /// Crops a region given in monitor-relative coordinates from a frozen OverlaySession.
