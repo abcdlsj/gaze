@@ -7,7 +7,6 @@ import {
   Ellipsis,
   EyeOff,
   Focus,
-  Grid3x3,
   MousePointer2,
   Pencil,
   Pin,
@@ -24,6 +23,19 @@ import {
 import { isMacPlatform } from "../../lib/hotkeys";
 import type { EditorTool } from "../../types";
 import { Tooltip } from "../ui/Tooltip";
+import {
+  BackdropFrameIcon,
+  MosaicBlurIcon,
+  StepCounterIcon,
+} from "./toolbarIcons";
+import {
+  EDITOR_TOOLBAR_ICON_CLS,
+  MENU_ICON_CLS,
+  TOOLBAR_GROUP_GAP_CLS,
+  TOOLBAR_MENU_CLS,
+  toolbarIconBtnClass,
+  toolbarMenuItemClass,
+} from "./toolbarSpec";
 
 interface Props {
   activeTool: EditorTool;
@@ -49,110 +61,6 @@ interface Props {
   onSetZoom: (zoom: number) => void;
   onZoomFit: () => void;
   backdropEnabled: boolean;
-}
-
-/* Crisp custom icons matching Lucide 1.75 stroke weight for tools with unique screenshot semantics */
-function BackdropFrameIcon() {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.65}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-[17px] w-[17px]"
-    >
-      <rect x="2.5" y="3.2" width="15" height="13.6" rx="2.6" />
-      <rect
-        x="5.6"
-        y="6.2"
-        width="8.8"
-        height="7.6"
-        rx="1.2"
-        fill="currentColor"
-        fillOpacity={0.14}
-      />
-    </svg>
-  );
-}
-
-export function MosaicBlurIcon() {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.6}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-[17px] w-[17px]"
-    >
-      <rect x="3" y="3" width="14" height="14" rx="2.5" />
-      <rect
-        x="5.4"
-        y="5.4"
-        width="3"
-        height="3"
-        rx="0.4"
-        fill="currentColor"
-        stroke="none"
-      />
-      <rect
-        x="11.6"
-        y="5.4"
-        width="3"
-        height="3"
-        rx="0.4"
-        fill="currentColor"
-        stroke="none"
-      />
-      <rect
-        x="8.5"
-        y="8.5"
-        width="3"
-        height="3"
-        rx="0.4"
-        fill="currentColor"
-        stroke="none"
-      />
-      <rect
-        x="5.4"
-        y="11.6"
-        width="3"
-        height="3"
-        rx="0.4"
-        fill="currentColor"
-        stroke="none"
-      />
-      <rect
-        x="11.6"
-        y="11.6"
-        width="3"
-        height="3"
-        rx="0.4"
-        fill="currentColor"
-        stroke="none"
-      />
-    </svg>
-  );
-}
-
-export function StepCounterIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.65}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <circle cx="10" cy="10" r="7.2" />
-      <path d="M8.7 7.6 10.4 6.5v7M8.8 13.5h3.1" strokeWidth={1.6} />
-    </svg>
-  );
 }
 
 export function EditorToolbar({
@@ -200,21 +108,29 @@ export function EditorToolbar({
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
-  const iconCls = "h-[16px] w-[16px] stroke-[1.75]";
-
+  const iconCls = EDITOR_TOOLBAR_ICON_CLS;
   const iconBtn = (active = false, disabled = false) =>
-    `flex h-[30px] w-[30px] items-center justify-center rounded-[7px] transition-all duration-100 ${
-      disabled
-        ? "cursor-default text-[#27272A]/30"
-        : active
-          ? "cursor-pointer bg-[#007AFF]/[0.11] text-[#0066D6] shadow-[inset_0_0_0_1px_rgba(0,122,255,0.18)]"
-          : "cursor-pointer text-[#27272A] hover:bg-black/[0.06] hover:text-[#09090B] active:scale-[0.95]"
-    }`;
+    toolbarIconBtnClass({ active, disabled, variant: "editor" });
+
+  const menuIconCls = (active = false) =>
+    `${MENU_ICON_CLS} ${active ? "text-[#0066D6]" : "text-[#3F3F46]"}`;
+
+  const shortcutCls = (active = false) =>
+    `font-mono text-[11px] ${active ? "text-[#0066D6]/80" : "text-[#63636C]"}`;
 
   const isRedactActive =
     activeTool === "blur" ||
     activeTool === "pixelate" ||
     activeTool === "blackout";
+
+  const isMoreToolActive =
+    activeTool === "ellipse" ||
+    activeTool === "line" ||
+    activeTool === "counter" ||
+    activeTool === "spotlight";
+
+  const inspectorBtnCls =
+    "flex cursor-pointer rounded-[7px] px-1.5 py-1 text-left transition-colors duration-100 hover:bg-black/[0.06]";
 
   return (
     <header
@@ -224,15 +140,21 @@ export function EditorToolbar({
       }`}
     >
       {/* Left: Primary Actions + Crop + Undo */}
-      <div className="flex items-center gap-0.5">
+      <div className={`flex items-center ${TOOLBAR_GROUP_GAP_CLS}`}>
         <Tooltip label="Copy" shortcut={`${modKey}C`} align="left">
-          <button type="button" onClick={onCopy} className={iconBtn(false)}>
+          <button
+            type="button"
+            aria-label="Copy"
+            onClick={onCopy}
+            className={iconBtn(false)}
+          >
             <Copy className={iconCls} />
           </button>
         </Tooltip>
         <Tooltip label="Save" shortcut={`${modKey}S`}>
           <button
             type="button"
+            aria-label="Save"
             onClick={onSave}
             onContextMenu={(e) => {
               e.preventDefault();
@@ -244,16 +166,23 @@ export function EditorToolbar({
           </button>
         </Tooltip>
         <Tooltip label="Pin on Screen">
-          <button type="button" onClick={onPin} className={iconBtn(false)}>
+          <button
+            type="button"
+            aria-label="Pin on Screen"
+            onClick={onPin}
+            className={iconBtn(false)}
+          >
             <Pin className={iconCls} />
           </button>
         </Tooltip>
 
-        <span className="mx-1 h-[18px] w-px bg-black/[0.08]" />
+        <span className="mx-1 h-[18px] w-px bg-black/[0.09]" />
 
         <Tooltip label="Crop Canvas" shortcut="C">
           <button
             type="button"
+            aria-label="Crop Canvas"
+            aria-pressed={activeTool === "crop"}
             onClick={() =>
               onSelectTool(activeTool === "crop" ? "select" : "crop")
             }
@@ -265,6 +194,7 @@ export function EditorToolbar({
         <Tooltip label="Undo" shortcut={`${modKey}Z`} disabled={!canUndo}>
           <button
             type="button"
+            aria-label="Undo"
             disabled={!canUndo}
             onClick={onUndo}
             className={iconBtn(false, !canUndo)}
@@ -275,10 +205,12 @@ export function EditorToolbar({
       </div>
 
       {/* Center: Annotation Tools */}
-      <div className="flex items-center gap-0.5">
+      <div className={`flex items-center ${TOOLBAR_GROUP_GAP_CLS}`}>
         <Tooltip label="Select & Edit" shortcut="V">
           <button
             type="button"
+            aria-label="Select & Edit"
+            aria-pressed={activeTool === "select"}
             onClick={() => onSelectTool("select")}
             className={iconBtn(activeTool === "select")}
           >
@@ -288,6 +220,8 @@ export function EditorToolbar({
         <Tooltip label="Arrow" shortcut="A">
           <button
             type="button"
+            aria-label="Arrow"
+            aria-pressed={activeTool === "arrow"}
             onClick={() => onSelectTool("arrow")}
             className={iconBtn(activeTool === "arrow")}
           >
@@ -297,6 +231,8 @@ export function EditorToolbar({
         <Tooltip label="Text" shortcut="T">
           <button
             type="button"
+            aria-label="Text"
+            aria-pressed={activeTool === "text"}
             onClick={() => onSelectTool("text")}
             className={iconBtn(activeTool === "text")}
           >
@@ -306,6 +242,8 @@ export function EditorToolbar({
         <Tooltip label="Measure Distance" shortcut="R">
           <button
             type="button"
+            aria-label="Measure Distance"
+            aria-pressed={activeTool === "ruler"}
             onClick={() => onSelectTool("ruler")}
             className={iconBtn(activeTool === "ruler")}
           >
@@ -315,6 +253,8 @@ export function EditorToolbar({
         <Tooltip label="Rectangle" shortcut="S">
           <button
             type="button"
+            aria-label="Rectangle"
+            aria-pressed={activeTool === "rect"}
             onClick={() => onSelectTool("rect")}
             className={iconBtn(activeTool === "rect")}
           >
@@ -324,17 +264,21 @@ export function EditorToolbar({
         <Tooltip label="Backdrop & Frame" shortcut="F">
           <button
             type="button"
+            aria-label="Backdrop & Frame"
+            aria-pressed={activeTool === "frame" || backdropEnabled}
             onClick={() =>
               onSelectTool(activeTool === "frame" ? "select" : "frame")
             }
             className={iconBtn(activeTool === "frame" || backdropEnabled)}
           >
-            <BackdropFrameIcon />
+            <BackdropFrameIcon className={iconCls} />
           </button>
         </Tooltip>
         <Tooltip label="Pen / Highlighter" shortcut="P">
           <button
             type="button"
+            aria-label="Pen / Highlighter"
+            aria-pressed={activeTool === "pen"}
             onClick={() => onSelectTool("pen")}
             className={iconBtn(activeTool === "pen")}
           >
@@ -344,10 +288,12 @@ export function EditorToolbar({
         <Tooltip label="Blur / Mosaic / Blackout" shortcut="B">
           <button
             type="button"
+            aria-label="Blur / Mosaic / Blackout"
+            aria-pressed={isRedactActive}
             onClick={() => onSelectTool(isRedactActive ? activeTool : "blur")}
             className={iconBtn(isRedactActive)}
           >
-            <MosaicBlurIcon />
+            <MosaicBlurIcon className={iconCls} />
           </button>
         </Tooltip>
 
@@ -356,34 +302,30 @@ export function EditorToolbar({
           <Tooltip label="More Tools" disabled={moreOpen}>
             <button
               type="button"
+              aria-label="More Tools"
+              aria-expanded={moreOpen}
               onClick={() => setMoreOpen((v) => !v)}
-              className={iconBtn(
-                moreOpen ||
-                  activeTool === "ellipse" ||
-                  activeTool === "line" ||
-                  activeTool === "counter" ||
-                  activeTool === "spotlight",
-              )}
+              className={iconBtn(moreOpen || isMoreToolActive)}
             >
               <Ellipsis className={iconCls} />
             </button>
           </Tooltip>
 
           {moreOpen && (
-            <div className="animate-pop-in absolute left-0 top-full z-50 mt-2 w-52 rounded-xl border border-black/[0.1] bg-white/95 py-1.5 text-[12.5px] text-[#141416] shadow-[0_12px_36px_rgba(0,0,0,0.14)] backdrop-blur-xl">
+            <div className={`${TOOLBAR_MENU_CLS} left-0 w-52`}>
               <button
                 type="button"
                 onClick={() => {
                   onSelectTool("ellipse");
                   setMoreOpen(false);
                 }}
-                className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05]"
+                className={toolbarMenuItemClass(activeTool === "ellipse")}
               >
                 <span className="flex items-center gap-2">
-                  <Circle className="h-3.5 w-3.5 stroke-[1.8] text-[#3F3F46]" />{" "}
+                  <Circle className={menuIconCls(activeTool === "ellipse")} />{" "}
                   Ellipse
                 </span>
-                <span className="font-mono text-[11px] text-[#63636C]">O</span>
+                <span className={shortcutCls(activeTool === "ellipse")}>O</span>
               </button>
               <button
                 type="button"
@@ -391,13 +333,12 @@ export function EditorToolbar({
                   onSelectTool("line");
                   setMoreOpen(false);
                 }}
-                className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05]"
+                className={toolbarMenuItemClass(activeTool === "line")}
               >
                 <span className="flex items-center gap-2">
-                  <Slash className="h-3.5 w-3.5 stroke-[1.8] text-[#3F3F46]" />{" "}
-                  Line
+                  <Slash className={menuIconCls(activeTool === "line")} /> Line
                 </span>
-                <span className="font-mono text-[11px] text-[#63636C]">L</span>
+                <span className={shortcutCls(activeTool === "line")}>L</span>
               </button>
               <button
                 type="button"
@@ -405,13 +346,15 @@ export function EditorToolbar({
                   onSelectTool("counter");
                   setMoreOpen(false);
                 }}
-                className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05]"
+                className={toolbarMenuItemClass(activeTool === "counter")}
               >
                 <span className="flex items-center gap-2">
-                  <StepCounterIcon className="h-3.5 w-3.5 text-[#3F3F46]" />{" "}
+                  <StepCounterIcon
+                    className={menuIconCls(activeTool === "counter")}
+                  />{" "}
                   Step Counter
                 </span>
-                <span className="font-mono text-[11px] text-[#63636C]">N</span>
+                <span className={shortcutCls(activeTool === "counter")}>N</span>
               </button>
               <button
                 type="button"
@@ -419,13 +362,15 @@ export function EditorToolbar({
                   onSelectTool("spotlight");
                   setMoreOpen(false);
                 }}
-                className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05]"
+                className={toolbarMenuItemClass(activeTool === "spotlight")}
               >
                 <span className="flex items-center gap-2">
-                  <Focus className="h-3.5 w-3.5 stroke-[1.8] text-[#3F3F46]" />{" "}
+                  <Focus className={menuIconCls(activeTool === "spotlight")} />{" "}
                   Spotlight
                 </span>
-                <span className="font-mono text-[11px] text-[#63636C]">H</span>
+                <span className={shortcutCls(activeTool === "spotlight")}>
+                  H
+                </span>
               </button>
               <button
                 type="button"
@@ -433,13 +378,17 @@ export function EditorToolbar({
                   onSelectTool("pixelate");
                   setMoreOpen(false);
                 }}
-                className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05]"
+                className={toolbarMenuItemClass(activeTool === "pixelate")}
               >
                 <span className="flex items-center gap-2">
-                  <Grid3x3 className="h-3.5 w-3.5 stroke-[1.8] text-[#3F3F46]" />{" "}
+                  <MosaicBlurIcon
+                    className={menuIconCls(activeTool === "pixelate")}
+                  />{" "}
                   Pixelate
                 </span>
-                <span className="font-mono text-[11px] text-[#63636C]">X</span>
+                <span className={shortcutCls(activeTool === "pixelate")}>
+                  X
+                </span>
               </button>
               <button
                 type="button"
@@ -447,13 +396,15 @@ export function EditorToolbar({
                   onSelectTool("blackout");
                   setMoreOpen(false);
                 }}
-                className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05]"
+                className={toolbarMenuItemClass(activeTool === "blackout")}
               >
                 <span className="flex items-center gap-2">
-                  <EyeOff className="h-3.5 w-3.5 stroke-[1.8] text-[#3F3F46]" />{" "}
+                  <EyeOff className={menuIconCls(activeTool === "blackout")} />{" "}
                   Blackout
                 </span>
-                <span className="font-mono text-[11px] text-[#63636C]">K</span>
+                <span className={shortcutCls(activeTool === "blackout")}>
+                  K
+                </span>
               </button>
 
               <div className="my-1 h-px bg-black/[0.07]" />
@@ -465,15 +416,12 @@ export function EditorToolbar({
                   onUndo();
                   setMoreOpen(false);
                 }}
-                className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05] disabled:cursor-default disabled:opacity-40"
+                className={toolbarMenuItemClass()}
               >
                 <span className="flex items-center gap-2">
-                  <Undo2 className="h-3.5 w-3.5 stroke-[1.8] text-[#3F3F46]" />{" "}
-                  Undo
+                  <Undo2 className={menuIconCls()} /> Undo
                 </span>
-                <span className="font-mono text-[11px] text-[#63636C]">
-                  {modKey}Z
-                </span>
+                <span className={shortcutCls()}>{modKey}Z</span>
               </button>
               <button
                 type="button"
@@ -482,15 +430,12 @@ export function EditorToolbar({
                   onRedo();
                   setMoreOpen(false);
                 }}
-                className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05] disabled:cursor-default disabled:opacity-40"
+                className={toolbarMenuItemClass()}
               >
                 <span className="flex items-center gap-2">
-                  <Redo2 className="h-3.5 w-3.5 stroke-[1.8] text-[#3F3F46]" />{" "}
-                  Redo
+                  <Redo2 className={menuIconCls()} /> Redo
                 </span>
-                <span className="font-mono text-[11px] text-[#63636C]">
-                  {modKey}⇧Z
-                </span>
+                <span className={shortcutCls()}>{modKey}⇧Z</span>
               </button>
               <button
                 type="button"
@@ -499,10 +444,11 @@ export function EditorToolbar({
                   onClearAnnotations();
                   setMoreOpen(false);
                 }}
-                className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-[#D70015] hover:bg-[#FF3B30]/[0.06] disabled:cursor-default disabled:opacity-40"
+                className={toolbarMenuItemClass(false, true)}
               >
-                <Trash2 className="h-3.5 w-3.5 stroke-[1.8]" /> Clear
-                Annotations
+                <span className="flex items-center gap-2">
+                  <Trash2 className={MENU_ICON_CLS} /> Clear Annotations
+                </span>
               </button>
 
               <div className="my-1 h-px bg-black/[0.07]" />
@@ -513,15 +459,12 @@ export function EditorToolbar({
                   onSaveAs();
                   setMoreOpen(false);
                 }}
-                className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05]"
+                className={toolbarMenuItemClass()}
               >
                 <span className="flex items-center gap-2">
-                  <Save className="h-3.5 w-3.5 stroke-[1.8] text-[#3F3F46]" />{" "}
-                  Save As…
+                  <Save className={menuIconCls()} /> Save As…
                 </span>
-                <span className="font-mono text-[11px] text-[#63636C]">
-                  {modKey}⇧S
-                </span>
+                <span className={shortcutCls()}>{modKey}⇧S</span>
               </button>
               <button
                 type="button"
@@ -529,15 +472,12 @@ export function EditorToolbar({
                   onOpenPreferences();
                   setMoreOpen(false);
                 }}
-                className="flex w-full cursor-pointer items-center justify-between px-3 py-1.5 hover:bg-black/[0.05]"
+                className={toolbarMenuItemClass()}
               >
                 <span className="flex items-center gap-2">
-                  <Settings className="h-3.5 w-3.5 stroke-[1.8] text-[#3F3F46]" />{" "}
-                  Preferences…
+                  <Settings className={menuIconCls()} /> Preferences…
                 </span>
-                <span className="font-mono text-[11px] text-[#63636C]">
-                  {modKey},
-                </span>
+                <span className={shortcutCls()}>{modKey},</span>
               </button>
             </div>
           )}
@@ -551,7 +491,7 @@ export function EditorToolbar({
           <button
             type="button"
             onClick={onCopyHex}
-            className="flex cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 text-left transition hover:bg-black/[0.05]"
+            className={`${inspectorBtnCls} items-center gap-2`}
           >
             <span
               ref={colorDotRef}
@@ -570,14 +510,14 @@ export function EditorToolbar({
           </button>
         </Tooltip>
 
-        <span className="h-[24px] w-px bg-black/[0.09]" />
+        <span className="h-[22px] w-px bg-black/[0.09]" />
 
         {/* Image Size */}
         <Tooltip label="Resize Image">
           <button
             type="button"
             onClick={onOpenResize}
-            className="flex cursor-pointer flex-col rounded-lg px-1.5 py-1 text-left leading-[1.2] transition hover:bg-black/[0.05]"
+            className={`${inspectorBtnCls} flex-col leading-[1.2]`}
           >
             <span className="text-[11.5px] font-medium tabular-nums tracking-[-0.01em] text-[#141416]">
               {widthPt}×{heightPt}pt
@@ -586,7 +526,7 @@ export function EditorToolbar({
           </button>
         </Tooltip>
 
-        <span className="h-[24px] w-px bg-black/[0.09]" />
+        <span className="h-[22px] w-px bg-black/[0.09]" />
 
         {/* Zoom */}
         <div ref={zoomRef} className="relative">
@@ -599,7 +539,7 @@ export function EditorToolbar({
             <button
               type="button"
               onClick={() => setZoomOpen((v) => !v)}
-              className="flex min-w-[44px] cursor-pointer flex-col rounded-lg px-1.5 py-1 text-left leading-[1.2] transition hover:bg-black/[0.05]"
+              className={`${inspectorBtnCls} min-w-[44px] flex-col leading-[1.2]`}
             >
               <span className="text-[11.5px] font-medium tabular-nums tracking-[-0.01em] text-[#141416]">
                 {Math.round(zoom * 100)}%
@@ -609,34 +549,35 @@ export function EditorToolbar({
           </Tooltip>
 
           {zoomOpen && (
-            <div className="animate-pop-in absolute right-0 top-full z-50 mt-2 w-28 rounded-xl border border-black/[0.1] bg-white/95 py-1 text-[12px] text-[#141416] shadow-[0_12px_36px_rgba(0,0,0,0.14)] backdrop-blur-xl">
+            <div className={`${TOOLBAR_MENU_CLS} right-0 w-28`}>
               <button
                 type="button"
                 onClick={() => {
                   onZoomFit();
                   setZoomOpen(false);
                 }}
-                className="flex w-full cursor-pointer px-3 py-1.5 text-left hover:bg-black/[0.05]"
+                className={toolbarMenuItemClass()}
               >
                 Fit Window
               </button>
               <div className="my-1 h-px bg-black/[0.07]" />
-              {[0.5, 1, 1.5, 2, 4].map((z) => (
-                <button
-                  key={z}
-                  type="button"
-                  onClick={() => {
-                    onSetZoom(z);
-                    setZoomOpen(false);
-                  }}
-                  className="flex w-full cursor-pointer justify-between px-3 py-1.5 text-left tabular-nums hover:bg-black/[0.05]"
-                >
-                  <span>{Math.round(z * 100)}%</span>
-                  {Math.abs(zoom - z) < 0.02 && (
-                    <span className="text-[#0066D6]">●</span>
-                  )}
-                </button>
-              ))}
+              {[0.5, 1, 1.5, 2, 4].map((z) => {
+                const active = Math.abs(zoom - z) < 0.02;
+                return (
+                  <button
+                    key={z}
+                    type="button"
+                    onClick={() => {
+                      onSetZoom(z);
+                      setZoomOpen(false);
+                    }}
+                    className={`${toolbarMenuItemClass(active)} tabular-nums`}
+                  >
+                    <span>{Math.round(z * 100)}%</span>
+                    {active && <span className="text-[#0066D6]">●</span>}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>

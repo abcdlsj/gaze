@@ -9,6 +9,21 @@ import type {
   TextStyle,
 } from "../../types";
 import { getShapeFillStyle } from "../../lib/canvas-render";
+import {
+  OPTIONS_ACTION_ICON_CLS,
+  OPTIONS_BAR_SHELL_CLS,
+  OPTIONS_DIVIDER_CLS,
+  OPTIONS_ICON_CLS,
+  OPTIONS_ROW_CLS,
+  OPTIONS_SEGMENT_TRACK_CLS,
+  OPTIONS_SLIDER_LABEL_CLS,
+  OPTIONS_SLIDER_VALUE_CLS,
+  optionsActionPillClass,
+  optionsCircleIconBtnClass,
+  optionsSegmentBtnClass,
+  optionsSwatchClass,
+  optionsTogglePillClass,
+} from "./toolbarSpec";
 
 const COLORS = [
   "#EF4444",
@@ -55,6 +70,37 @@ const BACKDROPS = [
 function sliderTrack(val: number, min: number, max: number): string {
   const pct = Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100));
   return `linear-gradient(to right, #007AFF 0%, #007AFF ${pct}%, #E5E5EA ${pct}%, #E5E5EA 100%)`;
+}
+
+function SegmentedControl<T extends string | number>({
+  options,
+  value,
+  onChange,
+  compact = false,
+}: {
+  options: readonly { value: T; label: string }[];
+  value: T;
+  onChange: (next: T) => void;
+  compact?: boolean;
+}) {
+  return (
+    <div className={OPTIONS_SEGMENT_TRACK_CLS}>
+      {options.map((opt) => {
+        const active = value === opt.value;
+        return (
+          <button
+            key={String(opt.value)}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onChange(opt.value)}
+            className={optionsSegmentBtnClass(active, compact)}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 interface Props {
@@ -206,25 +252,26 @@ export function ToolOptionsBar({
     activeHex: string,
     onChange: (hex: string) => void,
   ) => (
-    <div className="flex items-center gap-1.5">
-      {palette.map((hex) => (
-        <button
-          key={hex}
-          type="button"
-          onClick={() => onChange(hex)}
-          style={{ backgroundColor: hex }}
-          className={`h-[17px] w-[17px] cursor-pointer rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.16)] transition ${
-            activeHex.toLowerCase() === hex.toLowerCase()
-              ? "ring-2 ring-[#007AFF] ring-offset-1"
-              : "hover:scale-110"
-          }`}
-        />
-      ))}
+    <div className="flex h-[24px] items-center gap-[6px]">
+      {palette.map((hex) => {
+        const active = activeHex.toLowerCase() === hex.toLowerCase();
+        return (
+          <button
+            key={hex}
+            type="button"
+            aria-label={`Color ${hex}`}
+            aria-pressed={active}
+            onClick={() => onChange(hex)}
+            style={{ backgroundColor: hex }}
+            className={optionsSwatchClass(active)}
+          />
+        );
+      })}
     </div>
   );
 
   const renderStrokeDots = () => (
-    <div className="flex items-center gap-1" title="Stroke width ([ / ])">
+    <div className="flex items-center gap-[3px]" title="Stroke width ([ / ])">
       {STROKE_PRESETS.map((w) => {
         const active = Math.abs(effectiveStroke - w) < 0.8;
         const dotSize = Math.min(12, 3.5 + w * 1.05);
@@ -232,12 +279,10 @@ export function ToolOptionsBar({
           <button
             key={w}
             type="button"
+            aria-label={`Stroke width ${w}px`}
+            aria-pressed={active}
             onClick={() => onStrokeWidthChange(w)}
-            className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-full transition ${
-              active
-                ? "bg-[#007AFF]/[0.13] text-[#0066D6] ring-1 ring-[#007AFF]/35"
-                : "text-[#3F3F46] hover:bg-black/[0.06]"
-            }`}
+            className={optionsCircleIconBtnClass({ active })}
           >
             <span
               className="rounded-full bg-current"
@@ -255,23 +300,25 @@ export function ToolOptionsBar({
     }
     return (
       <>
-        <span className="h-4 w-px bg-black/[0.1]" />
-        <div className="flex items-center gap-0.5">
+        <span className={OPTIONS_DIVIDER_CLS} />
+        <div className="flex items-center gap-[3px]">
           <button
             type="button"
             title="Duplicate (⌘D)"
+            aria-label="Duplicate annotation"
             onClick={onDuplicateSelected}
-            className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-full text-[#3F3F46] transition hover:bg-black/[0.06] hover:text-[#141416]"
+            className={optionsCircleIconBtnClass()}
           >
-            <CopyPlus className="h-3.5 w-3.5 stroke-[1.8]" />
+            <CopyPlus className={OPTIONS_ICON_CLS} />
           </button>
           <button
             type="button"
             title="Delete (⌫)"
+            aria-label="Delete annotation"
             onClick={onDeleteSelected}
-            className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-full text-[#D70015] transition hover:bg-[#FF3B30]/[0.1]"
+            className={optionsCircleIconBtnClass({ destructive: true })}
           >
-            <Trash2 className="h-3.5 w-3.5 stroke-[1.8]" />
+            <Trash2 className={OPTIONS_ICON_CLS} />
           </button>
         </div>
       </>
@@ -283,72 +330,72 @@ export function ToolOptionsBar({
       data-options-bar="true"
       onMouseDown={keepFocusOnMouseDown}
       style={floatingStyle}
-      className={`animate-pop-in pointer-events-auto flex items-center gap-2.5 rounded-[18px] border border-black/[0.1] bg-white/95 px-3 py-1.5 text-[12px] text-[#141416] backdrop-blur-xl [&_*]:whitespace-nowrap [&>div]:flex-wrap [&>div]:gap-y-1.5 ${
+      className={`${OPTIONS_BAR_SHELL_CLS} ${
         floatingStyle
           ? "fixed z-40 shadow-[0_5px_24px_rgba(0,0,0,0.22)]"
-          : "absolute left-1/2 top-3 z-20 max-w-[94%] -translate-x-1/2 shadow-[0_8px_28px_rgba(0,0,0,0.12)]"
+          : "absolute left-1/2 top-3 z-[25] max-w-[94%] -translate-x-1/2 shadow-[0_8px_28px_rgba(0,0,0,0.12)]"
       }`}
     >
       {contextKind === "crop" ? (
-        <div className="flex items-center gap-2.5">
-          <span className="font-mono text-[11.5px] font-medium tabular-nums text-[#3F3F46]">
+        <div className={OPTIONS_ROW_CLS}>
+          <span className="font-mono text-[11.5px] font-medium tabular-nums leading-none text-[#3F3F46]">
             {cropSizePt ? `${cropSizePt.w} × ${cropSizePt.h} pt` : "Crop"}
           </span>
-          <span className="h-3.5 w-px bg-black/[0.1]" />
-          <button
-            type="button"
-            onClick={onApplyCrop}
-            className="mac-blue-fill inline-flex cursor-pointer items-center gap-1 rounded-full px-3 py-1 text-[11.5px] font-medium text-white antialiased transition hover:brightness-105"
-          >
-            <Check className="h-3.5 w-3.5" /> Apply
-          </button>
-          <button
-            type="button"
-            onClick={onCancelCrop}
-            className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-black/[0.06] px-2.5 py-1 text-[11.5px] text-[#2C2C30] transition hover:bg-black/[0.1]"
-          >
-            <X className="h-3.5 w-3.5" /> Cancel
-          </button>
+          <span className={OPTIONS_DIVIDER_CLS} />
+          <div className="flex items-center gap-[6px]">
+            <button
+              type="button"
+              onClick={onApplyCrop}
+              className={optionsActionPillClass("primary")}
+            >
+              <Check className={OPTIONS_ACTION_ICON_CLS} /> Apply
+            </button>
+            <button
+              type="button"
+              onClick={onCancelCrop}
+              className={optionsActionPillClass("secondary")}
+            >
+              <X className={OPTIONS_ACTION_ICON_CLS} /> Cancel
+            </button>
+          </div>
         </div>
       ) : contextKind === "frame" ? (
-        <div className="flex items-center gap-2.5">
+        <div className={OPTIONS_ROW_CLS}>
           <button
             type="button"
+            aria-pressed={backdrop.enabled}
             onClick={() =>
               onBackdropChange({ ...backdrop, enabled: !backdrop.enabled })
             }
-            className={`cursor-pointer rounded-full px-2.5 py-0.5 text-[11.5px] font-medium transition ${
-              backdrop.enabled
-                ? "bg-[#007AFF]/[0.12] text-[#0066D6]"
-                : "bg-black/[0.06] text-[#52525B]"
-            }`}
+            className={optionsTogglePillClass(backdrop.enabled)}
           >
             {backdrop.enabled ? "Frame On" : "Frame Off"}
           </button>
-          <div className="flex items-center gap-1.5">
-            {BACKDROPS.map((b) => (
-              <button
-                key={b.label}
-                type="button"
-                title={b.label}
-                onClick={() =>
-                  onBackdropChange({
-                    ...backdrop,
-                    enabled: true,
-                    background: b.value,
-                  })
-                }
-                style={{ background: b.value }}
-                className={`h-[18px] w-[18px] cursor-pointer rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.14)] transition ${
-                  backdrop.background === b.value && backdrop.enabled
-                    ? "ring-2 ring-[#007AFF] ring-offset-1"
-                    : "hover:scale-110"
-                }`}
-              />
-            ))}
+          <div className="flex h-[24px] items-center gap-[6px]">
+            {BACKDROPS.map((b) => {
+              const active = backdrop.background === b.value && backdrop.enabled;
+              return (
+                <button
+                  key={b.label}
+                  type="button"
+                  title={b.label}
+                  aria-label={`Backdrop ${b.label}`}
+                  aria-pressed={active}
+                  onClick={() =>
+                    onBackdropChange({
+                      ...backdrop,
+                      enabled: true,
+                      background: b.value,
+                    })
+                  }
+                  style={{ background: b.value }}
+                  className={optionsSwatchClass(active)}
+                />
+              );
+            })}
           </div>
-          <span className="h-4 w-px bg-black/[0.1]" />
-          <label className="flex items-center gap-1.5 text-[11.5px] text-[#3F3F46]">
+          <span className={OPTIONS_DIVIDER_CLS} />
+          <label className={OPTIONS_SLIDER_LABEL_CLS}>
             <span>Pad</span>
             <input
               type="range"
@@ -362,11 +409,11 @@ export function ToolOptionsBar({
                   padding: Number(e.target.value),
                 })
               }
-              className="gaze-slider w-16"
+              className="gaze-slider w-[56px]"
               style={{ background: sliderTrack(backdrop.padding, 12, 96) }}
             />
           </label>
-          <label className="flex items-center gap-1.5 text-[11.5px] text-[#3F3F46]">
+          <label className={OPTIONS_SLIDER_LABEL_CLS}>
             <span>Round</span>
             <input
               type="range"
@@ -380,12 +427,13 @@ export function ToolOptionsBar({
                   cornerRadius: Number(e.target.value),
                 })
               }
-              className="gaze-slider w-14"
+              className="gaze-slider w-[56px]"
               style={{ background: sliderTrack(backdrop.cornerRadius, 0, 28) }}
             />
           </label>
           <button
             type="button"
+            aria-pressed={backdrop.shadow}
             onClick={() =>
               onBackdropChange({
                 ...backdrop,
@@ -393,11 +441,7 @@ export function ToolOptionsBar({
                 shadow: !backdrop.shadow,
               })
             }
-            className={`cursor-pointer rounded-full px-2 py-0.5 text-[11px] font-medium transition ${
-              backdrop.shadow
-                ? "bg-black/[0.08] text-[#141416]"
-                : "text-[#63636C] hover:bg-black/[0.05]"
-            }`}
+            className={optionsTogglePillClass(backdrop.shadow)}
           >
             Shadow
           </button>
@@ -405,31 +449,18 @@ export function ToolOptionsBar({
       ) : contextKind === "blur" ||
         contextKind === "pixelate" ||
         contextKind === "blackout" ? (
-        <div className="flex items-center gap-2.5">
-          <div className="flex rounded-full bg-black/[0.06] p-0.5 text-[11.5px]">
-            {(
-              [
-                ["blur", "Blur"],
-                ["pixelate", "Pixelate"],
-                ["blackout", "Blackout"],
-              ] as const
-            ).map(([mode, label]) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => onSelectRedactMode(mode)}
-                className={`cursor-pointer rounded-full px-2.5 py-0.5 transition ${
-                  contextKind === mode
-                    ? "bg-white font-medium text-[#141416] shadow-xs"
-                    : "text-[#52525B] hover:text-[#141416]"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+        <div className={OPTIONS_ROW_CLS}>
+          <SegmentedControl<RedactMode>
+            options={[
+              { value: "blur", label: "Blur" },
+              { value: "pixelate", label: "Pixelate" },
+              { value: "blackout", label: "Blackout" },
+            ]}
+            value={contextKind}
+            onChange={onSelectRedactMode}
+          />
 
-          <span className="h-4 w-px bg-black/[0.1]" />
+          <span className={OPTIONS_DIVIDER_CLS} />
 
           {contextKind === "blackout" ? (
             renderColorSwatches(
@@ -438,7 +469,7 @@ export function ToolOptionsBar({
               onBlackoutColorChange,
             )
           ) : (
-            <label className="flex items-center gap-2 text-[11.5px] text-[#3F3F46]">
+            <label className={OPTIONS_SLIDER_LABEL_CLS}>
               <span>Strength</span>
               <input
                 type="range"
@@ -446,12 +477,12 @@ export function ToolOptionsBar({
                 max={28}
                 value={effectiveBlurStrength}
                 onChange={(e) => onBlurStrengthChange(Number(e.target.value))}
-                className="gaze-slider w-24"
+                className="gaze-slider w-[80px]"
                 style={{
                   background: sliderTrack(effectiveBlurStrength, 4, 28),
                 }}
               />
-              <span className="w-5 text-right font-medium tabular-nums text-[#141416]">
+              <span className={`${OPTIONS_SLIDER_VALUE_CLS} w-[18px]`}>
                 {effectiveBlurStrength}
               </span>
             </label>
@@ -459,12 +490,12 @@ export function ToolOptionsBar({
           {renderSelectionActions()}
         </div>
       ) : contextKind === "spotlight" ? (
-        <div className="flex items-center gap-2.5">
-          <span className="text-[11.5px] font-medium text-[#141416]">
+        <div className={OPTIONS_ROW_CLS}>
+          <span className="inline-flex h-[24px] items-center text-[11.5px] font-medium leading-none text-[#141416]">
             Spotlight
           </span>
-          <span className="h-4 w-px bg-black/[0.1]" />
-          <label className="flex items-center gap-2 text-[11.5px] text-[#3F3F46]">
+          <span className={OPTIONS_DIVIDER_CLS} />
+          <label className={OPTIONS_SLIDER_LABEL_CLS}>
             <span>Dim</span>
             <input
               type="range"
@@ -474,7 +505,7 @@ export function ToolOptionsBar({
               onChange={(e) =>
                 onSpotlightOpacityChange(Number(e.target.value) / 100)
               }
-              className="gaze-slider w-20"
+              className="gaze-slider w-[80px]"
               style={{
                 background: sliderTrack(
                   Math.round(effectiveSpotlightOpacity * 100),
@@ -483,39 +514,26 @@ export function ToolOptionsBar({
                 ),
               }}
             />
-            <span className="w-8 text-right font-medium tabular-nums text-[#141416]">
+            <span className={`${OPTIONS_SLIDER_VALUE_CLS} w-[28px]`}>
               {Math.round(effectiveSpotlightOpacity * 100)}%
             </span>
           </label>
           {renderSelectionActions()}
         </div>
       ) : contextKind === "text" ? (
-        <div className="flex items-center gap-2.5">
-          <div className="flex rounded-full bg-black/[0.06] p-0.5 text-[11.5px]">
-            {(
-              [
-                ["plain", "Plain"],
-                ["badge", "Badge"],
-              ] as const
-            ).map(([style, label]) => (
-              <button
-                key={style}
-                type="button"
-                onClick={() => onTextStyleChange(style)}
-                className={`cursor-pointer rounded-full px-2.5 py-0.5 transition ${
-                  effectiveTextStyle === style
-                    ? "bg-white font-medium text-[#141416] shadow-xs"
-                    : "text-[#52525B] hover:text-[#141416]"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <span className="h-4 w-px bg-black/[0.1]" />
+        <div className={OPTIONS_ROW_CLS}>
+          <SegmentedControl<TextStyle>
+            options={[
+              { value: "plain", label: "Plain" },
+              { value: "badge", label: "Badge" },
+            ]}
+            value={effectiveTextStyle}
+            onChange={onTextStyleChange}
+          />
+          <span className={OPTIONS_DIVIDER_CLS} />
           {renderColorSwatches(COLORS, effectiveColor, onColorChange)}
-          <span className="h-4 w-px bg-black/[0.1]" />
-          <label className="flex items-center gap-2 text-[11.5px] text-[#3F3F46]">
+          <span className={OPTIONS_DIVIDER_CLS} />
+          <label className={OPTIONS_SLIDER_LABEL_CLS}>
             <span>Size</span>
             <input
               type="range"
@@ -523,48 +541,42 @@ export function ToolOptionsBar({
               max={48}
               value={effectiveFontSize}
               onChange={(e) => onFontSizeChange(Number(e.target.value))}
-              className="gaze-slider w-20"
+              className="gaze-slider w-[80px]"
               style={{ background: sliderTrack(effectiveFontSize, 12, 48) }}
             />
-            <span className="w-7 text-right font-medium tabular-nums text-[#141416]">
+            <span className={`${OPTIONS_SLIDER_VALUE_CLS} w-[22px]`}>
               {effectiveFontSize}
             </span>
           </label>
           {renderSelectionActions()}
         </div>
       ) : contextKind === "counter" ? (
-        <div className="flex items-center gap-2.5">
+        <div className={OPTIONS_ROW_CLS}>
           {renderColorSwatches(COLORS, effectiveColor, onColorChange)}
-          <span className="h-4 w-px bg-black/[0.1]" />
-          <div className="flex rounded-full bg-black/[0.06] p-0.5 text-[11px]">
-            {COUNTER_SIZES.map((s) => (
-              <button
-                key={s.label}
-                type="button"
-                onClick={() => onCounterRadiusChange(s.radius)}
-                className={`cursor-pointer rounded-full px-2 py-0.5 transition ${
-                  effectiveCounterRadius === s.radius
-                    ? "bg-white font-semibold text-[#141416] shadow-xs"
-                    : "text-[#52525B] hover:text-[#141416]"
-                }`}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
+          <span className={OPTIONS_DIVIDER_CLS} />
+          <SegmentedControl<number>
+            compact
+            options={COUNTER_SIZES.map((s) => ({
+              value: s.radius,
+              label: s.label,
+            }))}
+            value={effectiveCounterRadius}
+            onChange={onCounterRadiusChange}
+          />
           {!selectedAnnotation && (
             <>
-              <span className="h-4 w-px bg-black/[0.1]" />
-              <div className="flex items-center gap-1 text-[11.5px] text-[#3F3F46]">
+              <span className={OPTIONS_DIVIDER_CLS} />
+              <div className="flex h-[24px] items-center gap-1 text-[11.5px] leading-none text-[#3F3F46]">
                 <span className="tabular-nums">Next #{nextCounterNum}</span>
                 {nextCounterNum > 1 && (
                   <button
                     type="button"
                     title="Reset counter to 1"
+                    aria-label="Reset counter to 1"
                     onClick={onResetCounter}
-                    className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full text-[#52525B] transition hover:bg-black/[0.07] hover:text-[#141416]"
+                    className={optionsCircleIconBtnClass()}
                   >
-                    <RotateCcw className="h-3 w-3" />
+                    <RotateCcw className={OPTIONS_ICON_CLS} />
                   </button>
                 )}
               </div>
@@ -573,81 +585,52 @@ export function ToolOptionsBar({
           {renderSelectionActions()}
         </div>
       ) : contextKind === "pen" ? (
-        <div className="flex items-center gap-2.5">
-          <div className="flex rounded-full bg-black/[0.06] p-0.5 text-[11.5px]">
-            <button
-              type="button"
-              onClick={() => onHighlighterChange(false)}
-              className={`cursor-pointer rounded-full px-2.5 py-0.5 transition ${
-                !effectiveHighlighter
-                  ? "bg-white font-medium text-[#141416] shadow-xs"
-                  : "text-[#52525B] hover:text-[#141416]"
-              }`}
-            >
-              Pen
-            </button>
-            <button
-              type="button"
-              onClick={() => onHighlighterChange(true)}
-              className={`cursor-pointer rounded-full px-2.5 py-0.5 transition ${
-                effectiveHighlighter
-                  ? "bg-white font-medium text-[#141416] shadow-xs"
-                  : "text-[#52525B] hover:text-[#141416]"
-              }`}
-            >
-              Highlighter
-            </button>
-          </div>
-          <span className="h-4 w-px bg-black/[0.1]" />
+        <div className={OPTIONS_ROW_CLS}>
+          <SegmentedControl<"pen" | "highlighter">
+            options={[
+              { value: "pen", label: "Pen" },
+              { value: "highlighter", label: "Highlighter" },
+            ]}
+            value={effectiveHighlighter ? "highlighter" : "pen"}
+            onChange={(mode) => onHighlighterChange(mode === "highlighter")}
+          />
+          <span className={OPTIONS_DIVIDER_CLS} />
           {renderColorSwatches(COLORS, effectiveColor, onColorChange)}
-          <span className="h-4 w-px bg-black/[0.1]" />
+          <span className={OPTIONS_DIVIDER_CLS} />
           {renderStrokeDots()}
           {renderSelectionActions()}
         </div>
       ) : contextKind === "rect" || contextKind === "ellipse" ? (
-        <div className="flex items-center gap-2.5">
-          <div className="flex rounded-full bg-black/[0.06] p-0.5 text-[11.5px]">
-            {(
-              [
-                ["outline", "Outline"],
-                ["tinted", "Tinted"],
-                ["solid", "Solid"],
-              ] as const
-            ).map(([style, label]) => (
-              <button
-                key={style}
-                type="button"
-                onClick={() => onShapeFillStyleChange(style)}
-                className={`cursor-pointer rounded-full px-2 py-0.5 transition ${
-                  effectiveFillStyle === style
-                    ? "bg-white font-medium text-[#141416] shadow-xs"
-                    : "text-[#52525B] hover:text-[#141416]"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <span className="h-4 w-px bg-black/[0.1]" />
+        <div className={OPTIONS_ROW_CLS}>
+          <SegmentedControl<ShapeFillStyle>
+            options={[
+              { value: "outline", label: "Outline" },
+              { value: "tinted", label: "Tinted" },
+              { value: "solid", label: "Solid" },
+            ]}
+            value={effectiveFillStyle}
+            onChange={onShapeFillStyleChange}
+          />
+          <span className={OPTIONS_DIVIDER_CLS} />
           {renderColorSwatches(COLORS, effectiveColor, onColorChange)}
           {effectiveFillStyle !== "solid" && (
             <>
-              <span className="h-4 w-px bg-black/[0.1]" />
+              <span className={OPTIONS_DIVIDER_CLS} />
               {renderStrokeDots()}
             </>
           )}
           {renderSelectionActions()}
         </div>
       ) : contextKind === "ruler" ? (
-        <div className="flex items-center gap-2.5">
+        <div className={OPTIONS_ROW_CLS}>
           {renderColorSwatches(COLORS, effectiveColor, onColorChange)}
           {renderSelectionActions()}
         </div>
       ) : (
         /* arrow | line */
-        <div className="flex items-center gap-2.5">
+        <div className={OPTIONS_ROW_CLS}>
           {renderColorSwatches(COLORS, effectiveColor, onColorChange)}
-          <span className="h-4 w-px bg-black/[0.1]" />
+          <span className={OPTIONS_DIVIDER_CLS} />
           {renderStrokeDots()}
           {renderSelectionActions()}
         </div>
