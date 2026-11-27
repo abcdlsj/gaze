@@ -12,3 +12,6 @@ xcuserdata/
 DerivedData/
 *.xcodeproj/xcuserdata/
 *.log
+
+# Local notes
+RELEASE.local.md
