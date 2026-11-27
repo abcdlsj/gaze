@@ -971,7 +971,10 @@ pub fn begin_inplace_session(
 ) {
     use tauri::Emitter;
     let state = app.state::<Arc<AppState>>();
-    let meta = state.store.lock().insert(image, scale, "area", Some(bounds));
+    let meta = state
+        .store
+        .lock()
+        .insert(image, scale, "area", Some(bounds));
     let session = InplaceSession {
         label: label.clone(),
         capture_id: meta.id,
@@ -1003,7 +1006,11 @@ pub fn inplace_fallback_to_editor(app: &AppHandle, label: &str) {
     let Some(session) = session else {
         return;
     };
-    let meta = state.store.lock().get(&session.capture_id).map(|c| c.meta());
+    let meta = state
+        .store
+        .lock()
+        .get(&session.capture_id)
+        .map(|c| c.meta());
     if let Some(meta) = meta {
         let app = app.clone();
         std::thread::spawn(move || {
@@ -1111,7 +1118,10 @@ fn inplace_finish(
                 let img = image::load_from_memory(&bytes)
                     .map_err(|e| format!("Failed to decode edited image: {e}"))?
                     .to_rgba8();
-                let meta = state.store.lock().insert(img.clone(), scale, "area", bounds);
+                let meta = state
+                    .store
+                    .lock()
+                    .insert(img.clone(), scale, "area", bounds);
                 (img, meta)
             }
             None => state

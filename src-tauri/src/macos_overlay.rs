@@ -9,12 +9,12 @@ use objc2::{define_class, msg_send, AnyThread, DefinedClass, MainThreadOnly};
 use objc2_app_kit::{
     NSApplication, NSApplicationActivationOptions, NSBackingStoreType, NSBezierPath, NSColor,
     NSCompositingOperation, NSCursor, NSEvent, NSEventMask, NSEventModifierFlags, NSFont,
-    NSFontAttributeName, NSFontWeightMedium, NSFontWeightRegular,
-    NSForegroundColorAttributeName, NSGraphicsContext, NSImage, NSImageSymbolConfiguration,
-    NSImageSymbolScale, NSPanel, NSResponder, NSRunningApplication, NSScreen,
-    NSScreenSaverWindowLevel, NSStringDrawing, NSTrackingArea, NSTrackingAreaOptions, NSView,
-    NSWindow, NSWindowAnimationBehavior, NSWindowCollectionBehavior, NSWindowSharingType,
-    NSWindowStyleMask, NSWorkspace, NSWorkspaceActiveSpaceDidChangeNotification,
+    NSFontAttributeName, NSFontWeightMedium, NSFontWeightRegular, NSForegroundColorAttributeName,
+    NSGraphicsContext, NSImage, NSImageSymbolConfiguration, NSImageSymbolScale, NSPanel,
+    NSResponder, NSRunningApplication, NSScreen, NSScreenSaverWindowLevel, NSStringDrawing,
+    NSTrackingArea, NSTrackingAreaOptions, NSView, NSWindow, NSWindowAnimationBehavior,
+    NSWindowCollectionBehavior, NSWindowSharingType, NSWindowStyleMask, NSWorkspace,
+    NSWorkspaceActiveSpaceDidChangeNotification,
 };
 use objc2_core_foundation::{
     CFData, CFDictionary, CFNumber, CFNumberType, CFRetained, CFString, CGPoint, CGRect, CGSize,
@@ -753,11 +753,26 @@ const TOOLBAR_ITEMS: [ToolbarItem; 20] = [
     tb(ToolbarAction::Tool("ellipse"), "circle", "Ellipse", "O"),
     tb(ToolbarAction::Tool("arrow"), "arrow.up.right", "Arrow", "A"),
     tb(ToolbarAction::Tool("line"), "line.diagonal", "Line", "L"),
-    tb(ToolbarAction::Tool("pen"), "pencil.tip", "Pen / Highlighter", "P"),
+    tb(
+        ToolbarAction::Tool("pen"),
+        "pencil.tip",
+        "Pen / Highlighter",
+        "P",
+    ),
     tb(ToolbarAction::Tool("text"), "textformat", "Text", "T"),
-    tb(ToolbarAction::Tool("pixelate"), "checkerboard.rectangle", "Mosaic", "X"),
+    tb(
+        ToolbarAction::Tool("pixelate"),
+        "checkerboard.rectangle",
+        "Mosaic",
+        "X",
+    ),
     tb(ToolbarAction::Tool("blur"), "drop", "Blur", "B"),
-    tb(ToolbarAction::Tool("counter"), "1.circle", "Step Number", "N"),
+    tb(
+        ToolbarAction::Tool("counter"),
+        "1.circle",
+        "Step Number",
+        "N",
+    ),
     TB_DIVIDER,
     tb(ToolbarAction::Undo, "arrow.uturn.backward", "Undo", "⌘Z"),
     tb(ToolbarAction::Redo, "arrow.uturn.forward", "Redo", "⇧⌘Z"),
@@ -2542,7 +2557,9 @@ impl OverlayController {
         let geometry = crate::InplaceGeometry {
             view_width: info.width as f64,
             view_height: info.height as f64,
-            selection: crate::InplaceRect::from_xywh(sel.rect.x, sel.rect.y, sel.rect.w, sel.rect.h),
+            selection: crate::InplaceRect::from_xywh(
+                sel.rect.x, sel.rect.y, sel.rect.w, sel.rect.h,
+            ),
             toolbar: {
                 let p = placement.pill_rect();
                 crate::InplaceRect::from_xywh(p.x, p.y, p.w, p.h)
@@ -2684,7 +2701,9 @@ impl OverlayController {
         let app = self.app.clone();
         let seq = self.seq;
         std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(INPLACE_CHROME_HIDE_DELAY_MS));
+            std::thread::sleep(std::time::Duration::from_millis(
+                INPLACE_CHROME_HIDE_DELAY_MS,
+            ));
             let _ = app.run_on_main_thread(move || {
                 with_controller(|ctrl| {
                     if !ctrl.active || ctrl.seq != seq || ctrl.inplace.is_none() {
@@ -3525,7 +3544,13 @@ fn draw_action_bar_hud(display_idx: usize, _bounds: NSRect) {
         ctrl.panels
             .get(display_idx)
             .and_then(|dp| dp.action_bar_placement)
-            .map(|p| (p, ctrl.hovered_action_idx, ctrl.inplace.as_ref().map(|h| h.tool_idx)))
+            .map(|p| {
+                (
+                    p,
+                    ctrl.hovered_action_idx,
+                    ctrl.inplace.as_ref().map(|h| h.tool_idx),
+                )
+            })
     })
     .flatten() else {
         return;
@@ -3588,7 +3613,10 @@ fn draw_action_bar_hud(display_idx: usize, _bounds: NSRect) {
         draw_sf_symbol(
             item.symbol,
             NSRect::new(
-                NSPoint::new(x + (TOOLBAR_BTN - 18.0) * 0.5, btn_top + (TOOLBAR_BTN - 18.0) * 0.5),
+                NSPoint::new(
+                    x + (TOOLBAR_BTN - 18.0) * 0.5,
+                    btn_top + (TOOLBAR_BTN - 18.0) * 0.5,
+                ),
                 NSSize::new(18.0, 18.0),
             ),
             13.0,
