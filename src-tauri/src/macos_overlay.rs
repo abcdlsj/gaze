@@ -1007,6 +1007,16 @@ define_class!(
         fn can_become_main_window(&self) -> Bool {
             Bool::NO
         }
+
+        // Prevent AppKit from clamping full-display overlays below the menu bar or notch.
+        #[unsafe(method(constrainFrameRect:toScreen:))]
+        fn constrain_frame_rect(
+            &self,
+            frame_rect: NSRect,
+            _screen: Option<&NSScreen>,
+        ) -> NSRect {
+            frame_rect
+        }
     }
 );
 
@@ -1023,7 +1033,6 @@ impl GazeOverlayPanel {
                 defer: Bool::NO
             ]
         };
-        panel.setLevel(NSScreenSaverWindowLevel);
         panel.setCollectionBehavior(
             NSWindowCollectionBehavior::CanJoinAllSpaces
                 | NSWindowCollectionBehavior::FullScreenAuxiliary
@@ -1031,6 +1040,11 @@ impl GazeOverlayPanel {
                 | NSWindowCollectionBehavior::IgnoresCycle,
         );
         panel.setFloatingPanel(true);
+        // `setFloatingPanel(true)` resets the window level to `NSFloatingWindowLevel` (3),
+        // which sits underneath the macOS menu bar (24) and Dock (20). Set the screen-saver
+        // level afterwards and re-apply the full-display frame so y=0 (menubar) is capturable.
+        panel.setLevel(NSScreenSaverWindowLevel);
+        panel.setFrame_display(frame, false);
         panel.setBecomesKeyOnlyIfNeeded(false);
         panel.setWorksWhenModal(true);
         panel.setOpaque(true);
@@ -2700,7 +2714,7 @@ impl OverlayController {
         };
         let ns_win = unsafe { &*(ptr as *const NSWindow) };
         let frame = cg_rect_to_cocoa_frame(dp.info.x, dp.info.y, dp.info.width, dp.info.height);
-        ns_win.setFrame_display(frame, false);
+        // Raise above the menu bar BEFORE setting frame so AppKit never constrains below y=0.
         ns_win.setLevel(NSScreenSaverWindowLevel + 1);
         ns_win.setCollectionBehavior(
             NSWindowCollectionBehavior::CanJoinAllSpaces
@@ -2708,6 +2722,7 @@ impl OverlayController {
                 | NSWindowCollectionBehavior::Stationary
                 | NSWindowCollectionBehavior::IgnoresCycle,
         );
+        ns_win.setFrame_display(frame, false);
         ns_win.setHasShadow(false);
         ns_win.setAnimationBehavior(NSWindowAnimationBehavior::None);
     }
