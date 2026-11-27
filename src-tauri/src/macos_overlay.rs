@@ -1516,7 +1516,7 @@ impl DisplayPanel {
     fn resize_if_needed(&mut self, info: &MacDisplayInfo) {
         let cocoa_frame = cg_rect_to_cocoa_frame(info.x, info.y, info.width, info.height);
         self.panel
-            .setFrame_display_animate(cocoa_frame, true, false);
+            .setFrame_display_animate(cocoa_frame, false, false);
         let local_bounds = NSRect::new(
             NSPoint::new(0.0, 0.0),
             NSSize::new(info.width as f64, info.height as f64),
@@ -1625,6 +1625,11 @@ impl DisplayPanel {
             self.badge_primary.push_str(primary);
             self.badge_secondary.clear();
             self.badge_secondary.push_str(secondary);
+            let idx = self.badge_view.ivars().display_idx.get();
+            if let Some(p) = hud_snapshot().lock().panels.get_mut(idx) {
+                p.badge_primary = self.badge_primary.clone();
+                p.badge_secondary = self.badge_secondary.clone();
+            }
         }
 
         let pill_w = measure_badge_width(primary, secondary).min(340.0);
@@ -1676,16 +1681,51 @@ thread_local! {
     static OVERLAY_CTRL: RefCell<Option<OverlayController>> = const { RefCell::new(None) };
 }
 
+/// Lock-free-from-`OVERLAY_CTRL` snapshot consumed by `GazeHudView::draw_rect`.
+/// AppKit/QuartzCore can synchronously invoke `drawRect:` during `CATransaction::commit()`
+/// or `setFrame:` while `with_controller` holds `OVERLAY_CTRL.borrow_mut()`. Reading HUD
+/// state from this separate mutex prevents re-entrant `RefCell` panics (`SIGABRT`).
+#[derive(Clone, Default)]
+struct PanelHudSnapshot {
+    badge_primary: String,
+    badge_secondary: String,
+    pixel_buffer: Option<Arc<Mutex<Option<SendPixelBuffer>>>>,
+    view_width: f64,
+    view_height: f64,
+    action_bar_placement: Option<ActionBarPlacement>,
+}
+
+#[derive(Clone, Default)]
+struct HudSnapshot {
+    panels: Vec<PanelHudSnapshot>,
+    cursor_local: (f64, f64),
+    hover_hex: String,
+    hovered_action_idx: Option<usize>,
+    active_tool_idx: Option<usize>,
+    toast_text: Option<String>,
+    is_scrolling: bool,
+}
+
+static HUD_SNAPSHOT: OnceLock<Mutex<HudSnapshot>> = OnceLock::new();
+
+fn hud_snapshot() -> &'static Mutex<HudSnapshot> {
+    HUD_SNAPSHOT.get_or_init(|| Mutex::new(HudSnapshot::default()))
+}
+
+fn clear_hud_snapshot() {
+    *hud_snapshot().lock() = HudSnapshot::default();
+}
+
 fn with_controller<R>(f: impl FnOnce(&mut OverlayController) -> R) -> Option<R> {
     OVERLAY_CTRL.with(|cell| {
-        let mut borrow = cell.borrow_mut();
+        let mut borrow = cell.try_borrow_mut().ok()?;
         borrow.as_mut().map(f)
     })
 }
 
 fn with_controller_ref<R>(f: impl FnOnce(&OverlayController) -> R) -> Option<R> {
     OVERLAY_CTRL.with(|cell| {
-        let borrow = cell.borrow();
+        let borrow = cell.try_borrow().ok()?;
         borrow.as_ref().map(f)
     })
 }
@@ -1850,6 +1890,7 @@ impl OverlayController {
         self.hovered_window = None;
         self.hovered_action_idx = None;
         self.toast_text = None;
+        clear_hud_snapshot();
         self.remove_key_monitors();
 
         // The in-place editor webview is hidden together with the panels. If it owns an edit
@@ -2005,12 +2046,14 @@ impl OverlayController {
                     .and_then(|p| hit_test_action_bar(p, x, y));
                 if new_hover != self.hovered_action_idx {
                     self.hovered_action_idx = new_hover;
+                    self.publish_hud_snapshot();
                     self.panels[display_idx]
                         .action_bar_view
                         .setNeedsDisplay(true);
                 }
             } else if self.hovered_action_idx.is_some() {
                 self.hovered_action_idx = None;
+                self.publish_hud_snapshot();
                 if let Some(dp) = self.panels.get(sel.display_idx) {
                     dp.action_bar_view.setNeedsDisplay(true);
                 }
@@ -2549,6 +2592,7 @@ impl OverlayController {
         self.hovered_action_idx = None;
         // Local key monitors would swallow keystrokes meant for the webview editor.
         self.remove_key_monitors();
+        self.publish_hud_snapshot();
         self.panels[sel.display_idx]
             .action_bar_view
             .setNeedsDisplay(true);
@@ -2923,6 +2967,30 @@ impl OverlayController {
         NSCursor::crosshairCursor().set();
     }
 
+    fn publish_hud_snapshot(&self) {
+        let snap = HudSnapshot {
+            panels: self
+                .panels
+                .iter()
+                .map(|dp| PanelHudSnapshot {
+                    badge_primary: dp.badge_primary.clone(),
+                    badge_secondary: dp.badge_secondary.clone(),
+                    pixel_buffer: Some(dp.pixel_buffer.clone()),
+                    view_width: dp.info.width as f64,
+                    view_height: dp.info.height as f64,
+                    action_bar_placement: dp.action_bar_placement,
+                })
+                .collect(),
+            cursor_local: self.cursor_local,
+            hover_hex: self.hover_hex.clone(),
+            hovered_action_idx: self.hovered_action_idx,
+            active_tool_idx: self.inplace.as_ref().map(|h| h.tool_idx),
+            toast_text: self.toast_text.clone(),
+            is_scrolling: self.mode == CaptureMode::Scrolling,
+        };
+        *hud_snapshot().lock() = snap;
+    }
+
     fn sync_all_panels(&mut self) {
         CATransaction::begin();
         CATransaction::setDisableActions(true);
@@ -2930,6 +2998,7 @@ impl OverlayController {
             self.sync_panel_inner(idx);
         }
         self.sync_banners_inner();
+        self.publish_hud_snapshot();
         CATransaction::commit();
     }
 
@@ -2937,6 +3006,7 @@ impl OverlayController {
         CATransaction::begin();
         CATransaction::setDisableActions(true);
         self.sync_panel_inner(idx);
+        self.publish_hud_snapshot();
         CATransaction::commit();
     }
 
@@ -2949,6 +3019,7 @@ impl OverlayController {
         CATransaction::setDisableActions(true);
         self.update_crosshair_inner(idx);
         self.update_loupe_inner(idx);
+        self.publish_hud_snapshot();
         CATransaction::commit();
     }
 
@@ -2960,6 +3031,7 @@ impl OverlayController {
         CATransaction::begin();
         CATransaction::setDisableActions(true);
         self.update_loupe_inner(idx);
+        self.publish_hud_snapshot();
         CATransaction::commit();
     }
 
@@ -3017,6 +3089,7 @@ impl OverlayController {
         }
 
         let (lx, ly) = compute_loupe_origin(cx, cy, vw, vh);
+        self.publish_hud_snapshot();
         self.panels[idx].loupe_view.setFrame(NSRect::new(
             NSPoint::new(lx, ly),
             NSSize::new(LOUPE_W, LOUPE_H),
@@ -3076,6 +3149,7 @@ impl OverlayController {
             if !is_dragging && r.w >= 6.0 && r.h >= 6.0 {
                 let placement = compute_action_bar_placement(r, vw, vh);
                 self.panels[idx].action_bar_placement = Some(placement);
+                self.publish_hud_snapshot();
                 self.panels[idx].action_bar_view.setFrame(NSRect::new(
                     NSPoint::new(placement.view_rect.x, placement.view_rect.y),
                     NSSize::new(placement.view_rect.w, placement.view_rect.h),
@@ -3084,6 +3158,7 @@ impl OverlayController {
                 self.panels[idx].action_bar_view.setNeedsDisplay(true);
             } else {
                 self.panels[idx].action_bar_placement = None;
+                self.publish_hud_snapshot();
                 self.panels[idx].action_bar_view.setHidden(true);
             }
         } else if self.selection.is_none() && cursor_on_this {
@@ -3167,6 +3242,7 @@ impl OverlayController {
     }
 
     fn sync_banners(&mut self) {
+        self.publish_hud_snapshot();
         CATransaction::begin();
         CATransaction::setDisableActions(true);
         self.sync_banners_inner();
@@ -3242,12 +3318,12 @@ fn measure_badge_width(primary: &str, secondary: &str) -> f64 {
 }
 
 fn draw_badge_hud(display_idx: usize, bounds: NSRect) {
-    let Some((primary, secondary)) = with_controller_ref(|ctrl| {
-        ctrl.panels
+    let Some((primary, secondary)) = ({
+        let snap = hud_snapshot().lock();
+        snap.panels
             .get(display_idx)
             .map(|dp| (dp.badge_primary.clone(), dp.badge_secondary.clone()))
-    })
-    .flatten() else {
+    }) else {
         return;
     };
 
@@ -3312,19 +3388,21 @@ fn draw_badge_hud(display_idx: usize, bounds: NSRect) {
 }
 
 fn draw_loupe_hud(display_idx: usize, bounds: NSRect) {
-    let Some((pixel_buf_arc, cx, cy, vw, vh, hex)) = with_controller_ref(|ctrl| {
-        ctrl.panels.get(display_idx).map(|dp| {
-            (
-                dp.pixel_buffer.clone(),
-                ctrl.cursor_local.0,
-                ctrl.cursor_local.1,
-                dp.info.width as f64,
-                dp.info.height as f64,
-                ctrl.hover_hex.clone(),
-            )
+    let Some((pixel_buf_arc, cx, cy, vw, vh, hex)) = ({
+        let snap = hud_snapshot().lock();
+        snap.panels.get(display_idx).and_then(|dp| {
+            dp.pixel_buffer.as_ref().map(|buf| {
+                (
+                    buf.clone(),
+                    snap.cursor_local.0,
+                    snap.cursor_local.1,
+                    dp.view_width,
+                    dp.view_height,
+                    snap.hover_hex.clone(),
+                )
+            })
         })
-    })
-    .flatten() else {
+    }) else {
         return;
     };
 
@@ -3540,19 +3618,13 @@ fn draw_sf_symbol(symbol_name: &str, rect: NSRect, point_size: f64, color: &NSCo
 }
 
 fn draw_action_bar_hud(display_idx: usize, _bounds: NSRect) {
-    let Some((placement, hovered_idx, active_idx)) = with_controller_ref(|ctrl| {
-        ctrl.panels
+    let Some((placement, hovered_idx, active_idx)) = ({
+        let snap = hud_snapshot().lock();
+        snap.panels
             .get(display_idx)
             .and_then(|dp| dp.action_bar_placement)
-            .map(|p| {
-                (
-                    p,
-                    ctrl.hovered_action_idx,
-                    ctrl.inplace.as_ref().map(|h| h.tool_idx),
-                )
-            })
-    })
-    .flatten() else {
+            .map(|p| (p, snap.hovered_action_idx, snap.active_tool_idx))
+    }) else {
         return;
     };
 
@@ -3685,10 +3757,9 @@ fn draw_action_bar_hud(display_idx: usize, _bounds: NSRect) {
 }
 
 fn draw_banner_hud(_display_idx: usize, bounds: NSRect) {
-    let Some((toast, is_scrolling)) =
-        with_controller_ref(|ctrl| (ctrl.toast_text.clone(), ctrl.mode == CaptureMode::Scrolling))
-    else {
-        return;
+    let (toast, is_scrolling) = {
+        let snap = hud_snapshot().lock();
+        (snap.toast_text.clone(), snap.is_scrolling)
     };
 
     let text = if let Some(t) = toast {
@@ -4065,5 +4136,38 @@ mod tests {
         let (lx2, ly2) = compute_loupe_origin(1480.0, 950.0, 1512.0, 982.0);
         assert!(lx2 + LOUPE_W < 1480.0);
         assert!(ly2 + LOUPE_H < 950.0);
+    }
+
+    #[test]
+    fn reentrant_controller_borrow_does_not_panic_and_hud_snapshot_stays_readable() {
+        // Simulate AppKit synchronously invoking drawRect:/callbacks while `OVERLAY_CTRL`
+        // is already mutably borrowed on the main thread (e.g. during area move drag).
+        OVERLAY_CTRL.with(|cell| {
+            let _active_mut_borrow = cell.borrow_mut();
+            assert!(with_controller_ref(|_| 1).is_none());
+            assert!(with_controller(|_| 1).is_none());
+
+            // HUD snapshot remains lockable and readable without touching `OVERLAY_CTRL`.
+            *hud_snapshot().lock() = HudSnapshot {
+                panels: vec![PanelHudSnapshot {
+                    badge_primary: "200 × 120".to_string(),
+                    badge_secondary: "pt".to_string(),
+                    pixel_buffer: None,
+                    view_width: 1440.0,
+                    view_height: 900.0,
+                    action_bar_placement: None,
+                }],
+                cursor_local: (42.0, 84.0),
+                hover_hex: "#112233".to_string(),
+                hovered_action_idx: None,
+                active_tool_idx: Some(6),
+                toast_text: None,
+                is_scrolling: false,
+            };
+            let snap = hud_snapshot().lock();
+            assert_eq!(snap.panels[0].badge_primary, "200 × 120");
+            assert_eq!(snap.active_tool_idx, Some(6));
+        });
+        clear_hud_snapshot();
     }
 }
