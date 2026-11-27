@@ -70,15 +70,17 @@ export function ResizeModal({
           </button>
         </div>
 
-        <div className="flex items-center gap-2">
-          <label className="flex flex-1 flex-col gap-1">
+        {/* minmax(0,1fr): number inputs have a ~160px intrinsic width that would otherwise
+            push the Height field out of the 300px card. */}
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-2">
+          <label className="flex min-w-0 flex-col gap-1">
             <span className="text-[11.5px] text-[#3F3F46]">Width</span>
             <input
               type="number"
               min={16}
               value={w}
               onChange={(e) => handleW(e.target.value)}
-              className="h-8 rounded-lg border border-black/[0.16] px-2.5 text-[13px] tabular-nums text-[#141416] outline-none focus:border-[#007AFF] focus:ring-[3px] focus:ring-[#007AFF]/20"
+              className="h-8 w-full min-w-0 rounded-lg border border-black/[0.16] px-2.5 text-[13px] tabular-nums text-[#141416] outline-none focus:border-[#007AFF] focus:ring-[3px] focus:ring-[#007AFF]/20"
             />
           </label>
 
@@ -86,7 +88,7 @@ export function ResizeModal({
             type="button"
             onClick={() => setLockAspect((v) => !v)}
             title={lockAspect ? "Aspect ratio locked" : "Aspect ratio unlocked"}
-            className={`mt-5 rounded-lg p-1.5 transition ${
+            className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
               lockAspect
                 ? "bg-[#007AFF]/10 text-[#0066D6]"
                 : "text-[#63636C] hover:bg-black/[0.06]"
@@ -99,14 +101,14 @@ export function ResizeModal({
             )}
           </button>
 
-          <label className="flex flex-1 flex-col gap-1">
+          <label className="flex min-w-0 flex-col gap-1">
             <span className="text-[11.5px] text-[#3F3F46]">Height</span>
             <input
               type="number"
               min={16}
               value={h}
               onChange={(e) => handleH(e.target.value)}
-              className="h-8 rounded-lg border border-black/[0.16] px-2.5 text-[13px] tabular-nums text-[#141416] outline-none focus:border-[#007AFF] focus:ring-[3px] focus:ring-[#007AFF]/20"
+              className="h-8 w-full min-w-0 rounded-lg border border-black/[0.16] px-2.5 text-[13px] tabular-nums text-[#141416] outline-none focus:border-[#007AFF] focus:ring-[3px] focus:ring-[#007AFF]/20"
             />
           </label>
         </div>
@@ -120,7 +122,7 @@ export function ResizeModal({
                 setW(String(Math.max(1, Math.round(initW * pct))));
                 setH(String(Math.max(1, Math.round(initH * pct))));
               }}
-              className="flex-1 rounded-md border border-black/[0.11] py-1 text-[11.5px] text-[#2C2C30] hover:bg-black/[0.04]"
+              className="min-w-0 flex-1 rounded-md border border-black/[0.11] py-1 text-[11.5px] text-[#2C2C30] hover:bg-black/[0.04]"
             >
               {Math.round(pct * 100)}%
             </button>

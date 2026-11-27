@@ -20,6 +20,9 @@ import {
   getCaptureImageRaw,
   getCaptureMeta,
   getSettings,
+  inplaceFinish,
+  inplaceHide,
+  inplaceReady,
   openPreferencesWindow,
   pinImageBytes,
   revealWindow,
@@ -30,6 +33,8 @@ import type {
   AppSettings,
   BackdropConfig,
   EditorTool,
+  InplaceAction,
+  InplaceSession,
   Point,
   RedactMode,
   ResizeHandleId,
@@ -39,6 +44,13 @@ import type {
 import { EditorToolbar } from "../components/editor/EditorToolbar";
 import { ToolOptionsBar } from "../components/editor/ToolOptionsBar";
 import { ResizeModal } from "../components/editor/ResizeModal";
+import { InplaceToolbar } from "../components/editor/InplaceToolbar";
+
+/** Height reserved for the tool options row shown next to the in-place toolbar. */
+const INPLACE_OPTIONS_H = 40;
+const INPLACE_OPTIONS_GAP = 6;
+/** Tools that only make sense in the standalone editor (canvas crop and backdrop frame). */
+const STANDALONE_ONLY_TOOLS: ReadonlySet<EditorTool> = new Set(["crop", "frame", "select"]);
 
 function rgbToHex(r: number, g: number, b: number): string {
   return (
@@ -73,7 +85,17 @@ interface TextDraftState {
   value: string;
 }
 
-export function EditorWindow({ captureId }: { captureId: string }) {
+export function EditorWindow({
+  captureId,
+  inplace,
+}: {
+  captureId: string;
+  /**
+   * When set, the editor runs in place on top of the frozen capture overlay: the image is
+   * drawn 1:1 at the selection rect, and a compact toolbar replaces the window chrome.
+   */
+  inplace?: InplaceSession;
+}) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const revealedRef = useRef(false);
@@ -104,7 +126,9 @@ export function EditorWindow({ captureId }: { captureId: string }) {
   const [spacePressed, setSpacePressed] = useState(false);
 
   // Tool state
-  const [activeTool, setActiveTool] = useState<EditorTool>("select");
+  const [activeTool, setActiveTool] = useState<EditorTool>(
+    inplace && !STANDALONE_ONLY_TOOLS.has(inplace.tool) ? inplace.tool : "select",
+  );
   const [color, setColor] = useState<string>("#EF4444");
   const [blackoutColor, setBlackoutColor] = useState<string>("#18181B");
   const [strokeWidth, setStrokeWidth] = useState<number>(3);
@@ -232,6 +256,11 @@ export function EditorWindow({ captureId }: { captureId: string }) {
         setSourceCanvas(c);
         setImgSize({ w: raw.width, h: raw.height });
 
+        if (inplace) {
+          // In place the image must line up pixel-for-pixel with the frozen frame below.
+          setZoom(1);
+          return;
+        }
         const vp = viewportRef.current;
         const vpW = vp && vp.clientWidth > 0 ? vp.clientWidth : window.innerWidth;
         const vpH =
@@ -246,7 +275,8 @@ export function EditorWindow({ captureId }: { captureId: string }) {
         setZoom(Math.max(0.15, Number(initialZoom.toFixed(2))));
       } catch (err) {
         console.error("Failed to load capture:", err);
-        if (!revealedRef.current) {
+        // In place, the native overlay times out and falls back to the standalone editor.
+        if (!revealedRef.current && !inplace) {
           revealedRef.current = true;
           void revealWindow(true);
         }
@@ -256,6 +286,7 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     return () => {
       active = false;
     };
+    // `inplace` is fixed for the lifetime of this component (it is keyed by session).
   }, [captureId]);
 
   const layout = useMemo(
@@ -311,7 +342,7 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     if (!revealedRef.current) {
       revealedRef.current = true;
       setTimeout(() => {
-        void revealWindow(true);
+        void (inplace ? inplaceReady() : revealWindow(true));
       }, 16);
     }
   }, [
@@ -748,7 +779,51 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     );
   }, [sourceCanvas, imgSize, scaleFactor, backdrop, annotations]);
 
+  // In-place completion: hide everything first so the screen unfreezes instantly, then
+  // export (only when there is something to flatten) and let Rust copy/save/pin the result.
+  const finishingRef = useRef(false);
+  const [pendingFinish, setPendingFinish] = useState<InplaceAction | null>(null);
+  const finishInplace = useCallback(
+    (action: InplaceAction) => {
+      if (!inplace || finishingRef.current) return;
+      if (textDraft && action !== "cancel") {
+        // Flush the text being typed first; the effect below resumes once it is committed.
+        commitTextDraft();
+        setPendingFinish(action);
+        return;
+      }
+      finishingRef.current = true;
+      void (async () => {
+        try {
+          await inplaceHide(action);
+          const bytes =
+            action !== "cancel" && annotations.length > 0
+              ? await buildExportBytes()
+              : null;
+          await inplaceFinish(action, bytes);
+        } catch (e) {
+          console.error(`In-place ${action} failed:`, e);
+          // Never leave a hidden, orphaned editor window behind.
+          void getCurrentWindow().destroy();
+        }
+      })();
+    },
+    [inplace, textDraft, commitTextDraft, annotations, buildExportBytes],
+  );
+
+  useEffect(() => {
+    if (pendingFinish && !textDraft) {
+      const action = pendingFinish;
+      setPendingFinish(null);
+      finishInplace(action);
+    }
+  }, [pendingFinish, textDraft, finishInplace]);
+
   const handleCopy = useCallback(async () => {
+    if (inplace) {
+      finishInplace("done");
+      return;
+    }
     try {
       const bytes = await buildExportBytes();
       await copyImageBytes(bytes);
@@ -759,9 +834,13 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     } catch (e) {
       showToast(`Copy failed: ${String(e)}`);
     }
-  }, [buildExportBytes, settings, showToast]);
+  }, [inplace, finishInplace, buildExportBytes, settings, showToast]);
 
   const handleSave = useCallback(async () => {
+    if (inplace) {
+      finishInplace("save");
+      return;
+    }
     try {
       const bytes = await buildExportBytes();
       await saveImageBytes(bytes, scaleFactor);
@@ -772,7 +851,7 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     } catch (e) {
       showToast(`Save failed: ${String(e)}`);
     }
-  }, [buildExportBytes, scaleFactor, settings, showToast]);
+  }, [inplace, finishInplace, buildExportBytes, scaleFactor, settings, showToast]);
 
   const handleSaveAs = useCallback(async () => {
     try {
@@ -794,6 +873,10 @@ export function EditorWindow({ captureId }: { captureId: string }) {
   }, [buildExportBytes, scaleFactor, settings, showToast]);
 
   const handlePin = useCallback(async () => {
+    if (inplace) {
+      finishInplace("pin");
+      return;
+    }
     try {
       const bytes = await buildExportBytes();
       await pinImageBytes(bytes, scaleFactor);
@@ -801,7 +884,7 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     } catch (e) {
       showToast(`Pin failed: ${String(e)}`);
     }
-  }, [buildExportBytes, scaleFactor, showToast]);
+  }, [inplace, finishInplace, buildExportBytes, scaleFactor, showToast]);
 
   const handleCopyHex = useCallback(() => {
     const hex = hoverHexRef.current;
@@ -814,6 +897,35 @@ export function EditorWindow({ captureId }: { captureId: string }) {
       if (textDraft || resizeOpen) return;
       const activeTag = (document.activeElement as HTMLElement | null)?.tagName;
       if (activeTag === "INPUT" || activeTag === "TEXTAREA") return;
+
+      if (inplace) {
+        // Snipaste key map: Esc cancels the capture, Enter / ⌘C copies and closes, ⌘S saves.
+        const mod = e.metaKey || e.ctrlKey;
+        const k = e.key.toLowerCase();
+        if (e.key === "Escape") {
+          e.preventDefault();
+          finishInplace("cancel");
+          return;
+        }
+        if (e.key === "Enter" || (mod && k === "c")) {
+          e.preventDefault();
+          finishInplace("done");
+          return;
+        }
+        if (mod && k === "s") {
+          e.preventDefault();
+          finishInplace("save");
+          return;
+        }
+        // No zoom/pan, Preferences, crop, frame or select tool in place.
+        if (e.code === "Space" || (mod && ["=", "+", "-", "0", ","].includes(k))) {
+          e.preventDefault();
+          return;
+        }
+        if (!mod && !e.altKey && (k === "c" || k === "f" || k === "v")) {
+          return;
+        }
+      }
 
       if (e.code === "Space") {
         e.preventDefault();
@@ -1006,6 +1118,8 @@ export function EditorWindow({ captureId }: { captureId: string }) {
       window.removeEventListener("keyup", onKeyUp);
     };
   }, [
+    inplace,
+    finishInplace,
     textDraft,
     resizeOpen,
     activeTool,
@@ -1642,7 +1756,7 @@ export function EditorWindow({ captureId }: { captureId: string }) {
   // Native non-passive wheel listener so WKWebView allows preventDefault() on trackpad pinch-zoom
   useEffect(() => {
     const vp = viewportRef.current;
-    if (!vp) return;
+    if (!vp || inplace) return;
     const onWheel = (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
@@ -1657,7 +1771,7 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     };
     vp.addEventListener("wheel", onWheel, { passive: false });
     return () => vp.removeEventListener("wheel", onWheel);
-  }, []);
+  }, [inplace]);
 
   const startCropDrag = (edge: CropEdge, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1685,6 +1799,276 @@ export function EditorWindow({ captureId }: { captureId: string }) {
     : null;
 
   const isBadgeDraft = textStyle === "badge";
+
+  const renderToolOptions = (floatingStyle?: React.CSSProperties) => (
+    <ToolOptionsBar
+      activeTool={textDraft ? "text" : activeTool}
+      selectedAnnotation={textDraft ? null : selectedAnnotation}
+      color={color}
+      onColorChange={handleColorChange}
+      blackoutColor={blackoutColor}
+      onBlackoutColorChange={handleBlackoutColorChange}
+      strokeWidth={strokeWidth}
+      onStrokeWidthChange={handleStrokeWidthChange}
+      fontSize={fontSize}
+      onFontSizeChange={handleFontSizeChange}
+      textStyle={textStyle}
+      onTextStyleChange={handleTextStyleChange}
+      blurStrength={blurStrength}
+      onBlurStrengthChange={handleBlurStrengthChange}
+      spotlightOpacity={spotlightOpacity}
+      onSpotlightOpacityChange={handleSpotlightOpacityChange}
+      shapeFillStyle={shapeFillStyle}
+      onShapeFillStyleChange={handleShapeFillStyleChange}
+      highlighter={highlighter}
+      onHighlighterChange={handleHighlighterChange}
+      counterRadius={counterRadius}
+      onCounterRadiusChange={handleCounterRadiusChange}
+      nextCounterNum={nextCounterNum}
+      onResetCounter={() => setNextCounterNum(1)}
+      backdrop={backdrop}
+      onBackdropChange={setBackdrop}
+      onSelectRedactMode={handleSelectRedactMode}
+      onDuplicateSelected={handleDuplicateSelected}
+      onDeleteSelected={handleDeleteSelected}
+      cropSizePt={cropSizePt}
+      onApplyCrop={applyCrop}
+      onCancelCrop={() => {
+        setCropRect(null);
+        setActiveTool("select");
+      }}
+      floatingStyle={floatingStyle}
+    />
+  );
+
+  // GPU-accelerated canvas stage (shared by the standalone and in-place layouts)
+  const stage = (
+    <div
+      style={
+        inplace
+          ? {
+              position: "absolute",
+              left: inplace.selection.x,
+              top: inplace.selection.y,
+              width: displayW,
+              height: displayH,
+            }
+          : {
+              width: displayW,
+              height: displayH,
+              transform: `translate3d(${pan.x}px, ${pan.y}px, 0)`,
+              willChange: "transform",
+            }
+      }
+      className={inplace ? undefined : "relative shrink-0"}
+    >
+      <canvas
+        ref={canvasRef}
+        style={{
+          width: displayW,
+          height: displayH,
+          imageRendering: zoom >= 2 ? "pixelated" : "auto",
+        }}
+        className={inplace ? "block" : "block shadow-[0_1px_5px_rgba(0,0,0,0.08)]"}
+      />
+
+      {/* Inline transparent/badge text box (WYSIWYG aligned with canvas text renderer) */}
+      {textDraft && (
+        <textarea
+          ref={textInputRef}
+          autoFocus
+          rows={Math.max(1, textDraft.value.split("\n").length)}
+          value={textDraft.value}
+          onMouseDown={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          onChange={(e) =>
+            setTextDraft({ ...textDraft, value: e.target.value })
+          }
+          onBlur={(e) => {
+            const next = e.relatedTarget as HTMLElement | null;
+            if (next && next.closest('[data-options-bar="true"]')) {
+              return;
+            }
+            commitTextDraft();
+          }}
+          onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+            if (e.key === "Escape") {
+              e.preventDefault();
+              setTextDraft(null);
+            } else if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              commitTextDraft();
+            }
+          }}
+          style={{
+            left: ((textDraft.x + layout.offsetX) / scaleFactor) * zoom - 2,
+            top: ((textDraft.y + layout.offsetY) / scaleFactor) * zoom - 1,
+            color: isBadgeDraft ? getContrastingTextColor(color) : color,
+            backgroundColor: isBadgeDraft ? color : "transparent",
+            padding: isBadgeDraft
+              ? `${Math.round(fontSize * zoom * 0.24)}px ${Math.round(fontSize * zoom * 0.45)}px`
+              : "0px 2px",
+            borderRadius: isBadgeDraft
+              ? `${Math.round(Math.min(8 * zoom, fontSize * zoom * 0.35))}px`
+              : "3px",
+            caretColor: isBadgeDraft
+              ? getContrastingTextColor(color)
+              : color,
+            fontFamily:
+              '-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif',
+            fontSize: `${fontSize * zoom}px`,
+            lineHeight: 1.28,
+            textShadow:
+              !isBadgeDraft && isLightHexColor(color)
+                ? "0 0.75px 1.5px rgba(0, 0, 0, 0.42)"
+                : "none",
+            width: `${Math.max(
+              6,
+              ...textDraft.value.split("\n").map((line) => {
+                let units = 0;
+                for (const ch of line) {
+                  units += ch.charCodeAt(0) > 127 ? 2 : 1.05;
+                }
+                return Math.ceil(units) + 2;
+              }),
+            )}ch`,
+            maxWidth: Math.max(
+              140,
+              displayW -
+                ((textDraft.x + layout.offsetX) / scaleFactor) * zoom,
+            ),
+            userSelect: "text",
+          }}
+          placeholder="Type…"
+          className="absolute z-30 resize-none overflow-hidden border border-dashed border-[#007AFF]/70 font-semibold outline-none placeholder:text-current/55"
+        />
+      )}
+
+      {/* Interactive 8-Handle Crop Frame with Rule-of-Thirds Grid */}
+      {activeTool === "crop" && cropRect && (
+        <div
+          onMouseDown={(e) => startCropDrag("move", e)}
+          style={{
+            left: ((cropRect.x + layout.offsetX) / scaleFactor) * zoom,
+            top: ((cropRect.y + layout.offsetY) / scaleFactor) * zoom,
+            width: (cropRect.w / scaleFactor) * zoom,
+            height: (cropRect.h / scaleFactor) * zoom,
+            boxShadow: "0 0 0 9999px rgba(0, 0, 0, 0.38)",
+          }}
+          className="absolute z-20 cursor-move border-[1.5px] border-white shadow-[inset_0_0_0_1px_rgba(0,122,255,0.85)]"
+        >
+          {/* Rule-of-thirds guides */}
+          <div className="pointer-events-none absolute inset-0">
+            <div className="absolute left-1/3 top-0 bottom-0 w-px bg-white/30" />
+            <div className="absolute left-2/3 top-0 bottom-0 w-px bg-white/30" />
+            <div className="absolute top-1/3 left-0 right-0 h-px bg-white/30" />
+            <div className="absolute top-2/3 left-0 right-0 h-px bg-white/30" />
+          </div>
+
+          {/* 4 Corner Handles */}
+          {(
+            [
+              ["nw", "-left-1.5 -top-1.5 cursor-nwse-resize"],
+              ["ne", "-right-1.5 -top-1.5 cursor-nesw-resize"],
+              ["sw", "-left-1.5 -bottom-1.5 cursor-nesw-resize"],
+              ["se", "-right-1.5 -bottom-1.5 cursor-nwse-resize"],
+            ] as const
+          ).map(([edge, cls]) => (
+            <div
+              key={edge}
+              onMouseDown={(e) => startCropDrag(edge, e)}
+              className={`absolute h-3 w-3 rounded-full border-2 border-[#007AFF] bg-white shadow ${cls}`}
+            />
+          ))}
+
+          {/* 4 Edge Midpoint Pill Handles */}
+          {(
+            [
+              ["n", "left-1/2 -top-1.5 -translate-x-1/2 h-2.5 w-6 cursor-ns-resize"],
+              ["s", "left-1/2 -bottom-1.5 -translate-x-1/2 h-2.5 w-6 cursor-ns-resize"],
+              ["w", "top-1/2 -left-1.5 -translate-y-1/2 w-2.5 h-6 cursor-ew-resize"],
+              ["e", "top-1/2 -right-1.5 -translate-y-1/2 w-2.5 h-6 cursor-ew-resize"],
+            ] as const
+          ).map(([edge, cls]) => (
+            <div
+              key={edge}
+              onMouseDown={(e) => startCropDrag(edge, e)}
+              className={`absolute rounded-full border-[1.5px] border-[#007AFF] bg-white shadow ${cls}`}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  if (inplace) {
+    const sel = inplace.selection;
+    const tb = inplace.toolbar;
+    const viewH = inplace.view_height;
+    // Options row: on the far side of the toolbar from the selection, flipping when the
+    // screen edge is too close (mirrors the toolbar's own below/above/inside placement).
+    const roomBelow =
+      tb.y + tb.height + INPLACE_OPTIONS_GAP + INPLACE_OPTIONS_H <= viewH - 4;
+    const roomAbove = tb.y - INPLACE_OPTIONS_GAP - INPLACE_OPTIONS_H >= 4;
+    const optionsBelow =
+      inplace.toolbar_side === "below" ? roomBelow : !roomAbove && roomBelow;
+    const optionsStyle: React.CSSProperties = {
+      left: tb.x,
+      maxWidth: tb.width,
+      top: optionsBelow ? tb.y + tb.height + INPLACE_OPTIONS_GAP : tb.y - INPLACE_OPTIONS_GAP,
+      // `translate` (not `transform`): the pop-in animation owns `transform`.
+      translate: optionsBelow ? undefined : "0 -100%",
+    };
+    const tooltipSide = optionsBelow
+      ? "top"
+      : tb.y + tb.height + 34 <= viewH
+        ? "bottom"
+        : "top";
+
+    return (
+      <div
+        className="fixed inset-0 select-none overflow-hidden text-[#141416]"
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        <div
+          ref={viewportRef}
+          onMouseDown={handleViewportMouseDown}
+          onDoubleClick={handleViewportDoubleClick}
+          onMouseMove={handleViewportMouseMove}
+          onMouseUp={handleViewportMouseUp}
+          onMouseLeave={handleViewportMouseUp}
+          className="absolute inset-0"
+        >
+          {stage}
+          {/* Same two-tone frame as the native selection border underneath */}
+          <div
+            className="pointer-events-none absolute z-30 shadow-[inset_0_0_0_2px_#0095FF]"
+            style={{ left: sel.x, top: sel.y, width: sel.width, height: sel.height }}
+          >
+            {sel.width > 6 && sel.height > 6 && (
+              <div className="absolute inset-[2px] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.62)]" />
+            )}
+          </div>
+        </div>
+
+        {renderToolOptions(optionsStyle)}
+
+        <InplaceToolbar
+          left={tb.x}
+          top={tb.y}
+          activeTool={textDraft ? "text" : activeTool}
+          canUndo={undoStack.length > 0}
+          canRedo={redoStack.length > 0}
+          tooltipSide={tooltipSide}
+          onSelectTool={selectTool}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          onAction={finishInplace}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full w-full flex-col bg-white text-[#141416]">
@@ -1731,192 +2115,9 @@ export function EditorWindow({ captureId }: { captureId: string }) {
         onMouseLeave={handleViewportMouseUp}
         className="checkerboard-bg relative flex flex-1 select-none items-center justify-center overflow-hidden"
       >
-        <ToolOptionsBar
-          activeTool={textDraft ? "text" : activeTool}
-          selectedAnnotation={textDraft ? null : selectedAnnotation}
-          color={color}
-          onColorChange={handleColorChange}
-          blackoutColor={blackoutColor}
-          onBlackoutColorChange={handleBlackoutColorChange}
-          strokeWidth={strokeWidth}
-          onStrokeWidthChange={handleStrokeWidthChange}
-          fontSize={fontSize}
-          onFontSizeChange={handleFontSizeChange}
-          textStyle={textStyle}
-          onTextStyleChange={handleTextStyleChange}
-          blurStrength={blurStrength}
-          onBlurStrengthChange={handleBlurStrengthChange}
-          spotlightOpacity={spotlightOpacity}
-          onSpotlightOpacityChange={handleSpotlightOpacityChange}
-          shapeFillStyle={shapeFillStyle}
-          onShapeFillStyleChange={handleShapeFillStyleChange}
-          highlighter={highlighter}
-          onHighlighterChange={handleHighlighterChange}
-          counterRadius={counterRadius}
-          onCounterRadiusChange={handleCounterRadiusChange}
-          nextCounterNum={nextCounterNum}
-          onResetCounter={() => setNextCounterNum(1)}
-          backdrop={backdrop}
-          onBackdropChange={setBackdrop}
-          onSelectRedactMode={handleSelectRedactMode}
-          onDuplicateSelected={handleDuplicateSelected}
-          onDeleteSelected={handleDeleteSelected}
-          cropSizePt={cropSizePt}
-          onApplyCrop={applyCrop}
-          onCancelCrop={() => {
-            setCropRect(null);
-            setActiveTool("select");
-          }}
-        />
+        {renderToolOptions()}
 
-        {/* GPU-accelerated Canvas Stage */}
-        <div
-          style={{
-            width: displayW,
-            height: displayH,
-            transform: `translate3d(${pan.x}px, ${pan.y}px, 0)`,
-            willChange: "transform",
-          }}
-          className="relative shrink-0"
-        >
-          <canvas
-            ref={canvasRef}
-            style={{
-              width: displayW,
-              height: displayH,
-              imageRendering: zoom >= 2 ? "pixelated" : "auto",
-            }}
-            className="block shadow-[0_1px_5px_rgba(0,0,0,0.08)]"
-          />
-
-          {/* Inline transparent/badge text box (WYSIWYG aligned with canvas text renderer) */}
-          {textDraft && (
-            <textarea
-              ref={textInputRef}
-              autoFocus
-              rows={Math.max(1, textDraft.value.split("\n").length)}
-              value={textDraft.value}
-              onMouseDown={(e) => e.stopPropagation()}
-              onDoubleClick={(e) => e.stopPropagation()}
-              onChange={(e) =>
-                setTextDraft({ ...textDraft, value: e.target.value })
-              }
-              onBlur={(e) => {
-                const next = e.relatedTarget as HTMLElement | null;
-                if (next && next.closest('[data-options-bar="true"]')) {
-                  return;
-                }
-                commitTextDraft();
-              }}
-              onKeyDown={(e) => {
-                if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  setTextDraft(null);
-                } else if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  commitTextDraft();
-                }
-              }}
-              style={{
-                left: ((textDraft.x + layout.offsetX) / scaleFactor) * zoom - 2,
-                top: ((textDraft.y + layout.offsetY) / scaleFactor) * zoom - 1,
-                color: isBadgeDraft ? getContrastingTextColor(color) : color,
-                backgroundColor: isBadgeDraft ? color : "transparent",
-                padding: isBadgeDraft
-                  ? `${Math.round(fontSize * zoom * 0.24)}px ${Math.round(fontSize * zoom * 0.45)}px`
-                  : "0px 2px",
-                borderRadius: isBadgeDraft
-                  ? `${Math.round(Math.min(8 * zoom, fontSize * zoom * 0.35))}px`
-                  : "3px",
-                caretColor: isBadgeDraft
-                  ? getContrastingTextColor(color)
-                  : color,
-                fontFamily:
-                  '-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif',
-                fontSize: `${fontSize * zoom}px`,
-                lineHeight: 1.28,
-                textShadow:
-                  !isBadgeDraft && isLightHexColor(color)
-                    ? "0 0.75px 1.5px rgba(0, 0, 0, 0.42)"
-                    : "none",
-                width: `${Math.max(
-                  6,
-                  ...textDraft.value.split("\n").map((line) => {
-                    let units = 0;
-                    for (const ch of line) {
-                      units += ch.charCodeAt(0) > 127 ? 2 : 1.05;
-                    }
-                    return Math.ceil(units) + 2;
-                  }),
-                )}ch`,
-                maxWidth: Math.max(
-                  140,
-                  displayW -
-                    ((textDraft.x + layout.offsetX) / scaleFactor) * zoom,
-                ),
-                userSelect: "text",
-              }}
-              placeholder="Type…"
-              className="absolute z-30 resize-none overflow-hidden border border-dashed border-[#007AFF]/70 font-semibold outline-none placeholder:text-current/55"
-            />
-          )}
-
-          {/* Interactive 8-Handle Crop Frame with Rule-of-Thirds Grid */}
-          {activeTool === "crop" && cropRect && (
-            <div
-              onMouseDown={(e) => startCropDrag("move", e)}
-              style={{
-                left: ((cropRect.x + layout.offsetX) / scaleFactor) * zoom,
-                top: ((cropRect.y + layout.offsetY) / scaleFactor) * zoom,
-                width: (cropRect.w / scaleFactor) * zoom,
-                height: (cropRect.h / scaleFactor) * zoom,
-                boxShadow: "0 0 0 9999px rgba(0, 0, 0, 0.38)",
-              }}
-              className="absolute z-20 cursor-move border-[1.5px] border-white shadow-[inset_0_0_0_1px_rgba(0,122,255,0.85)]"
-            >
-              {/* Rule-of-thirds guides */}
-              <div className="pointer-events-none absolute inset-0">
-                <div className="absolute left-1/3 top-0 bottom-0 w-px bg-white/30" />
-                <div className="absolute left-2/3 top-0 bottom-0 w-px bg-white/30" />
-                <div className="absolute top-1/3 left-0 right-0 h-px bg-white/30" />
-                <div className="absolute top-2/3 left-0 right-0 h-px bg-white/30" />
-              </div>
-
-              {/* 4 Corner Handles */}
-              {(
-                [
-                  ["nw", "-left-1.5 -top-1.5 cursor-nwse-resize"],
-                  ["ne", "-right-1.5 -top-1.5 cursor-nesw-resize"],
-                  ["sw", "-left-1.5 -bottom-1.5 cursor-nesw-resize"],
-                  ["se", "-right-1.5 -bottom-1.5 cursor-nwse-resize"],
-                ] as const
-              ).map(([edge, cls]) => (
-                <div
-                  key={edge}
-                  onMouseDown={(e) => startCropDrag(edge, e)}
-                  className={`absolute h-3 w-3 rounded-full border-2 border-[#007AFF] bg-white shadow ${cls}`}
-                />
-              ))}
-
-              {/* 4 Edge Midpoint Pill Handles */}
-              {(
-                [
-                  ["n", "left-1/2 -top-1.5 -translate-x-1/2 h-2.5 w-6 cursor-ns-resize"],
-                  ["s", "left-1/2 -bottom-1.5 -translate-x-1/2 h-2.5 w-6 cursor-ns-resize"],
-                  ["w", "top-1/2 -left-1.5 -translate-y-1/2 w-2.5 h-6 cursor-ew-resize"],
-                  ["e", "top-1/2 -right-1.5 -translate-y-1/2 w-2.5 h-6 cursor-ew-resize"],
-                ] as const
-              ).map(([edge, cls]) => (
-                <div
-                  key={edge}
-                  onMouseDown={(e) => startCropDrag(edge, e)}
-                  className={`absolute rounded-full border-[1.5px] border-[#007AFF] bg-white shadow ${cls}`}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+        {stage}
 
         {/* Minimal Frosted Toast */}
         {toast && (

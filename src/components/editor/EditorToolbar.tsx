@@ -77,7 +77,7 @@ function BackdropFrameIcon() {
   );
 }
 
-function MosaicBlurIcon() {
+export function MosaicBlurIcon() {
   return (
     <svg
       viewBox="0 0 20 20"
@@ -138,7 +138,7 @@ function MosaicBlurIcon() {
   );
 }
 
-function StepCounterIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
+export function StepCounterIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 20 20"

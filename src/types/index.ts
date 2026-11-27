@@ -229,3 +229,28 @@ export interface BackdropConfig {
   shadow: boolean;
   background: string;
 }
+
+// In-place (Snipaste-style) editing session handed over from the native capture overlay.
+// All geometry is in display-local points (CSS px of the full-display editor window).
+export interface InplaceRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export type InplaceToolbarSide = "below" | "above" | "inside";
+
+export type InplaceAction = "done" | "save" | "pin" | "editor" | "cancel";
+
+export interface InplaceSession {
+  label: string;
+  capture_id: string;
+  scale_factor: number;
+  tool: EditorTool;
+  view_width: number;
+  view_height: number;
+  selection: InplaceRect;
+  toolbar: InplaceRect;
+  toolbar_side: InplaceToolbarSide;
+}

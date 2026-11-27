@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { Check, CopyPlus, RotateCcw, Trash2, X } from "lucide-react";
 import type {
   Annotation,
@@ -89,6 +90,11 @@ interface Props {
   cropSizePt?: { w: number; h: number } | null;
   onApplyCrop?: () => void;
   onCancelCrop?: () => void;
+  /**
+   * Fixed-position placement (in-place editor). When omitted the bar floats centered at the
+   * top of the editor viewport.
+   */
+  floatingStyle?: CSSProperties;
 }
 
 export function ToolOptionsBar({
@@ -124,6 +130,7 @@ export function ToolOptionsBar({
   cropSizePt,
   onApplyCrop,
   onCancelCrop,
+  floatingStyle,
 }: Props) {
   // Determine which context the bar should display:
   // If an annotation is selected (in select mode or right after drawing), reflect its type & properties.
@@ -275,7 +282,12 @@ export function ToolOptionsBar({
     <div
       data-options-bar="true"
       onMouseDown={keepFocusOnMouseDown}
-      className="animate-pop-in pointer-events-auto absolute left-1/2 top-3 z-20 flex max-w-[94%] -translate-x-1/2 items-center gap-2.5 rounded-full border border-black/[0.1] bg-white/95 px-3 py-1.5 text-[12px] text-[#141416] shadow-[0_8px_28px_rgba(0,0,0,0.12)] backdrop-blur-xl"
+      style={floatingStyle}
+      className={`animate-pop-in pointer-events-auto flex items-center gap-2.5 rounded-[18px] border border-black/[0.1] bg-white/95 px-3 py-1.5 text-[12px] text-[#141416] backdrop-blur-xl [&_*]:whitespace-nowrap [&>div]:flex-wrap [&>div]:gap-y-1.5 ${
+        floatingStyle
+          ? "fixed z-40 shadow-[0_5px_24px_rgba(0,0,0,0.22)]"
+          : "absolute left-1/2 top-3 z-20 max-w-[94%] -translate-x-1/2 shadow-[0_8px_28px_rgba(0,0,0,0.12)]"
+      }`}
     >
       {contextKind === "crop" ? (
         <div className="flex items-center gap-2.5">

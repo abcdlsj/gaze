@@ -4,6 +4,7 @@ import "./index.css";
 import { isMacPlatform } from "./lib/hotkeys";
 import { PreferencesWindow } from "./windows/PreferencesWindow";
 import { EditorWindow } from "./windows/EditorWindow";
+import { InplaceEditorWindow } from "./windows/InplaceEditorWindow";
 import { OverlayWindow } from "./windows/OverlayWindow";
 import { PinWindow } from "./windows/PinWindow";
 import { ThumbnailWindow } from "./windows/ThumbnailWindow";
@@ -21,6 +22,8 @@ function AppRouter() {
   switch (win) {
     case "editor":
       return <EditorWindow captureId={id} />;
+    case "inplace":
+      return <InplaceEditorWindow />;
     case "overlay":
       return <OverlayWindow />;
     case "pin":

@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AppSettings,
   CaptureMeta,
+  InplaceAction,
+  InplaceSession,
   OverlaySessionInfo,
   PermissionStatus,
 } from "../types";
@@ -231,4 +233,30 @@ export async function openScreenshotsFolder(): Promise<void> {
 
 export async function openExternalUrl(url: string): Promise<void> {
   return invoke("open_external_url", { url });
+}
+
+export async function getInplaceSession(): Promise<InplaceSession | null> {
+  return invoke<InplaceSession | null>("get_inplace_session");
+}
+
+/** Tells the native overlay the in-place editor has painted and can be shown. */
+export async function inplaceReady(): Promise<void> {
+  return invoke("inplace_ready");
+}
+
+/** Hides the capture overlay and the in-place editor right away. */
+export async function inplaceHide(action: InplaceAction): Promise<void> {
+  return invoke("inplace_hide", { action });
+}
+
+/**
+ * Completes the in-place edit. Pass the annotated PNG, or `null` to use the untouched crop.
+ * The editor window is destroyed afterwards.
+ */
+export async function inplaceFinish(
+  action: InplaceAction,
+  pngBytes: Uint8Array | null,
+): Promise<void> {
+  const pngBase64 = pngBytes ? await uint8ToBase64(pngBytes) : null;
+  return invoke("inplace_finish", { action, pngBase64 });
 }
