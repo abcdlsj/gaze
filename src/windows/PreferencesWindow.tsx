@@ -10,11 +10,20 @@ import {
 import {
   getHotkeyErrors,
   getSettings,
+  onUpdaterStatus,
+  openExternalUrl,
   resetSettings,
   revealWindow,
+  setPreferencesTab,
   updateSettings,
+  updaterCheckNow,
+  updaterCommitRestart,
+  updaterDownloadUpdate,
+  updaterGetStatus,
+  updaterTakeHandoff,
 } from "../lib/tauri";
-import type { AppSettings } from "../types";
+import type { AppSettings, UpdateStatus } from "../types";
+import { UpdatePill } from "../components/UpdatePill";
 import { GeneralTab } from "../components/preferences/GeneralTab";
 import { HotkeysTab } from "../components/preferences/HotkeysTab";
 import { EditorTab } from "../components/preferences/EditorTab";
@@ -25,6 +34,23 @@ type TabId = "general" | "hotkeys" | "editor" | "advanced" | "about";
 
 const PREFS_WIDTH = 500;
 const BOTTOM_BREATHING = 18;
+const SMART_AUTO_RESTART_WINDOW_MS = 8_000;
+
+const VALID_TABS: readonly TabId[] = [
+  "general",
+  "hotkeys",
+  "editor",
+  "advanced",
+  "about",
+];
+
+const INITIAL_UPDATE_STATUS: UpdateStatus = {
+  current: "",
+  available: false,
+  state: "idle",
+  progress: 0,
+  can_apply: false,
+};
 
 const TABS: { id: TabId; label: string; icon: typeof Settings }[] = [
   { id: "general", label: "General", icon: Settings },
@@ -33,6 +59,10 @@ const TABS: { id: TabId; label: string; icon: typeof Settings }[] = [
   { id: "advanced", label: "Advanced", icon: FlaskConical },
   { id: "about", label: "About", icon: Info },
 ];
+
+function isValidTab(value: unknown): value is TabId {
+  return typeof value === "string" && (VALID_TABS as readonly string[]).includes(value);
+}
 
 export function PreferencesWindow() {
   const headerRef = useRef<HTMLElement | null>(null);
@@ -45,13 +75,144 @@ export function PreferencesWindow() {
   const [hotkeyErrors, setHotkeyErrors] = useState<Record<string, string | null>>(
     {},
   );
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>(
+    INITIAL_UPDATE_STATUS,
+  );
+  const [updateFlushing, setUpdateFlushing] = useState(false);
+  const [updateNotice, setUpdateNotice] = useState<string | null>(null);
+
+  const activeTabRef = useRef<TabId>(activeTab);
+  activeTabRef.current = activeTab;
+  const clickedAtRef = useRef<number | null>(null);
+  const committingRef = useRef(false);
+
+  // Sync active tab to backend so tray-initiated restarts restore the same tab.
+  useEffect(() => {
+    void setPreferencesTab(activeTab).catch(() => {});
+  }, [activeTab]);
 
   useEffect(() => {
     void (async () => {
-      const [s, errs] = await Promise.all([getSettings(), getHotkeyErrors()]);
+      const [s, errs, handoff] = await Promise.all([
+        getSettings(),
+        getHotkeyErrors(),
+        updaterTakeHandoff().catch(() => null),
+      ]);
       setSettings(s);
       setHotkeyErrors(errs);
+      if (handoff && isValidTab(handoff.app_state?.active_tab)) {
+        setActiveTab(handoff.app_state.active_tab);
+      }
     })();
+  }, []);
+
+  const commitRestart = useCallback(async () => {
+    if (committingRef.current) return;
+    committingRef.current = true;
+    setUpdateFlushing(true);
+    setUpdateNotice(null);
+    try {
+      await updaterCommitRestart({
+        preferences_open: true,
+        active_tab: activeTabRef.current,
+      });
+    } catch (err) {
+      committingRef.current = false;
+      setUpdateFlushing(false);
+      setUpdateNotice(String(err));
+    }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    let unlisten: (() => void) | undefined;
+
+    const handleUpdate = (next: UpdateStatus) => {
+      if (!active) return;
+      setUpdateStatus(next);
+      if (next.state === "error" && next.error) {
+        setUpdateNotice(next.error);
+      } else if (next.state !== "idle") {
+        setUpdateNotice(null);
+      }
+
+      if (next.state === "ready_to_restart" && !committingRef.current) {
+        const clickedAt = clickedAtRef.current;
+        const withinWindow =
+          clickedAt !== null &&
+          Date.now() - clickedAt <= SMART_AUTO_RESTART_WINDOW_MS;
+        if (withinWindow) {
+          clickedAtRef.current = null;
+          void commitRestart();
+        }
+      }
+    };
+
+    updaterGetStatus()
+      .then(handleUpdate)
+      .catch(() => {});
+
+    onUpdaterStatus(handleUpdate)
+      .then((fn) => {
+        if (active) unlisten = fn;
+        else fn();
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+      unlisten?.();
+    };
+  }, [commitRestart]);
+
+  const handleActivateUpdate = useCallback(async () => {
+    if (
+      updateFlushing ||
+      updateStatus.state === "downloading" ||
+      updateStatus.state === "verifying" ||
+      updateStatus.state === "installing"
+    ) {
+      return;
+    }
+
+    if (updateStatus.state === "ready_to_restart") {
+      await commitRestart();
+      return;
+    }
+
+    if (!updateStatus.available) return;
+
+    if (!updateStatus.can_apply) {
+      if (updateStatus.release_url) {
+        void openExternalUrl(updateStatus.release_url);
+      }
+      return;
+    }
+
+    setUpdateNotice(null);
+    clickedAtRef.current = Date.now();
+    try {
+      const next = await updaterDownloadUpdate();
+      setUpdateStatus(next);
+    } catch (err) {
+      clickedAtRef.current = null;
+      setUpdateNotice(String(err));
+    }
+  }, [commitRestart, updateFlushing, updateStatus]);
+
+  const handleCheckForUpdates = useCallback(async () => {
+    setUpdateNotice(null);
+    try {
+      const next = await updaterCheckNow();
+      setUpdateStatus(next);
+      if (next.error) {
+        setUpdateNotice(next.error);
+      } else if (!next.available && next.state === "idle") {
+        setUpdateNotice("You're up to date.");
+      }
+    } catch (err) {
+      setUpdateNotice(String(err));
+    }
   }, []);
 
   // Auto-fit window height to the active tab's exact content height so there is zero trailing gap.
@@ -117,19 +278,31 @@ export function PreferencesWindow() {
     setHotkeyErrors(errs);
   }, []);
 
+  const effectiveUpdateStatus: UpdateStatus = updateFlushing
+    ? { ...updateStatus, state: "flushing" }
+    : updateStatus;
+
   return (
     <div className="flex h-full w-full flex-col bg-white text-[#141416]">
       {/* Compact macOS-style Unified Preferences Header */}
       <header
         ref={headerRef}
         data-tauri-drag-region
-        className="flex shrink-0 flex-col items-center border-b border-black/[0.08] bg-[#F6F6F8] pb-2 pt-[7px]"
+        className="relative flex shrink-0 flex-col items-center border-b border-black/[0.08] bg-[#F6F6F8] pb-2 pt-[7px]"
       >
         <div
           data-tauri-drag-region
           className="font-display mb-1.5 text-[13px] font-semibold tracking-[-0.012em] text-[#141416]"
         >
           Preferences
+        </div>
+
+        <div className="absolute right-3 top-[6px]">
+          <UpdatePill
+            status={effectiveUpdateStatus}
+            onActivate={() => void handleActivateUpdate()}
+            compact
+          />
         </div>
 
         <nav className="flex items-center gap-0.5">
@@ -189,7 +362,12 @@ export function PreferencesWindow() {
             ) : activeTab === "advanced" ? (
               <AdvancedTab onResetDefaults={handleReset} />
             ) : (
-              <AboutTab />
+              <AboutTab
+                updateStatus={effectiveUpdateStatus}
+                updateNotice={updateNotice}
+                onCheckForUpdates={() => void handleCheckForUpdates()}
+                onActivateUpdate={() => void handleActivateUpdate()}
+              />
             )}
           </div>
         )}

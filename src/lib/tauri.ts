@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import type {
   AppSettings,
   CaptureMeta,
@@ -6,6 +7,8 @@ import type {
   InplaceSession,
   OverlaySessionInfo,
   PermissionStatus,
+  UpdateHandoffPayload,
+  UpdateStatus,
 } from "../types";
 
 export async function getSettings(): Promise<AppSettings> {
@@ -259,4 +262,38 @@ export async function inplaceFinish(
 ): Promise<void> {
   const pngBase64 = pngBytes ? await uint8ToBase64(pngBytes) : null;
   return invoke("inplace_finish", { action, pngBase64 });
+}
+
+export async function setPreferencesTab(tab: string): Promise<void> {
+  return invoke("set_preferences_tab", { tab });
+}
+
+export async function updaterGetStatus(): Promise<UpdateStatus> {
+  return invoke<UpdateStatus>("updater_get_status");
+}
+
+export async function updaterCheckNow(): Promise<UpdateStatus> {
+  return invoke<UpdateStatus>("updater_check_now");
+}
+
+export async function updaterDownloadUpdate(): Promise<UpdateStatus> {
+  return invoke<UpdateStatus>("updater_download_update");
+}
+
+export async function updaterCommitRestart(
+  appState: Record<string, unknown>,
+): Promise<void> {
+  return invoke<void>("updater_commit_restart", { appState });
+}
+
+export async function updaterTakeHandoff(): Promise<UpdateHandoffPayload | null> {
+  return invoke<UpdateHandoffPayload | null>("updater_take_handoff");
+}
+
+export function onUpdaterStatus(
+  handler: (status: UpdateStatus) => void,
+): Promise<() => void> {
+  return listen<UpdateStatus>("updater-status", (event) => {
+    handler(event.payload);
+  });
 }

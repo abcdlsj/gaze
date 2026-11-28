@@ -38,9 +38,16 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::ptr::NonNull;
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, OnceLock};
 use tauri::{AppHandle, Manager};
+
+static NATIVE_OVERLAY_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// Lock-free check for whether the native macOS capture overlay is currently visible.
+pub fn is_native_overlay_active() -> bool {
+    NATIVE_OVERLAY_ACTIVE.load(Ordering::SeqCst)
+}
 
 // ============================================================================
 // CoreGraphics zero-copy image & display capture (100% thread-safe)
@@ -1791,6 +1798,7 @@ impl OverlayController {
 
         self.seq = seq;
         self.active = true;
+        NATIVE_OVERLAY_ACTIVE.store(true, Ordering::SeqCst);
         self.mode = mode;
         self.selection = None;
         self.drag = None;
@@ -1901,6 +1909,7 @@ impl OverlayController {
             return;
         }
         self.active = false;
+        NATIVE_OVERLAY_ACTIVE.store(false, Ordering::SeqCst);
         self.drag = None;
         self.selection = None;
         self.hovered_window = None;

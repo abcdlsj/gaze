@@ -196,3 +196,50 @@ input[type="range"].gaze-slider::-webkit-slider-thumb:active {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.26);
 }
+
+/* Minimalist Seamless Auto-Update Pill */
+.update-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--ink-primary);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 0.5px 1.5px rgba(0, 0, 0, 0.06);
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, opacity 120ms ease;
+}
+
+.update-pill:hover:not(:disabled) {
+  background: rgba(0, 122, 255, 0.07);
+  border-color: rgba(0, 122, 255, 0.45);
+  color: #0066d6;
+}
+
+.update-pill--busy {
+  opacity: 0.78;
+  cursor: default;
+}
+
+.update-pill--ready {
+  border-color: rgba(0, 122, 255, 0.55);
+  color: #0066d6;
+}
+
+.update-pill--error {
+  border-color: rgba(215, 0, 21, 0.45);
+  color: #d70015;
+}
+
+.update-pill--compact {
+  height: 20px;
+  padding: 0 6px;
+}

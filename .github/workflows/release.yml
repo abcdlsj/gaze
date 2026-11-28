@@ -195,6 +195,25 @@ jobs:
           \`F1\` (area) or \`Shift+F1\` (scrolling long screenshot).
           EOF
           } > NOTES.md
+      - name: Generate signed update manifest (latest.json)
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          VERSION: ${{ needs.check-version.outputs.version }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          python3 scripts/generate-update-manifest.py \
+            --app gaze \
+            --repo "${{ github.repository }}" \
+            --tag "${TAG}" \
+            --version "${VERSION}" \
+            --bundle-id dev.abcdlsj.gaze \
+            --bundle-name Gaze.app \
+            --min-os 12.0 \
+            --notes-file NOTES.md \
+            --out-dir artifacts \
+            --asset "darwin-universal=artifacts/gaze_${VERSION}_darwin_universal.zip" \
+            --asset "windows-x86_64=artifacts/gaze_${VERSION}_windows_amd64_setup.exe"
       - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

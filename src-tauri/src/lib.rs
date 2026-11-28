@@ -10,6 +10,7 @@ pub mod scrolling;
 pub mod settings;
 pub mod stitcher;
 pub mod tray;
+pub mod updater;
 pub mod windows;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -38,10 +39,27 @@ pub struct AppState {
     pub hotkeys_suspended: AtomicBool,
     /// Active in-place edit session (selection handed from the native overlay to a webview).
     pub inplace: Mutex<Option<InplaceSession>>,
+    pub updater: Arc<updater::UpdateManager>,
+    pub active_preferences_tab: Mutex<String>,
+    pub last_tray_update_key: Mutex<(updater::UpdatePhase, u8)>,
 }
 
 impl AppState {
     fn new() -> Self {
+        let data_dir = dirs::data_dir()
+            .or_else(dirs::config_dir)
+            .or_else(dirs::home_dir)
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("dev.abcdlsj.gaze");
+        let cache_dir = dirs::cache_dir()
+            .or_else(dirs::data_local_dir)
+            .unwrap_or_else(|| data_dir.clone())
+            .join("dev.abcdlsj.gaze");
+        let updater = Arc::new(updater::UpdateManager::new(
+            env!("CARGO_PKG_VERSION"),
+            data_dir,
+            cache_dir,
+        ));
         Self {
             settings: Mutex::new(AppSettings::load()),
             store: Mutex::new(CaptureStore::default()),
@@ -52,7 +70,32 @@ impl AppState {
             overlay_starting: AtomicBool::new(false),
             hotkeys_suspended: AtomicBool::new(false),
             inplace: Mutex::new(None),
+            updater,
+            active_preferences_tab: Mutex::new("general".to_string()),
+            last_tray_update_key: Mutex::new((updater::UpdatePhase::Idle, 0)),
         }
+    }
+
+    /// Zero-data-loss capture guard: refuses an automatic restart while any
+    /// capture overlay, scrolling screenshot, or in-place annotation is active.
+    pub fn active_capture_block_reason(&self) -> Option<&'static str> {
+        if self.overlay_starting.load(Ordering::SeqCst) {
+            return Some("a screen capture is starting");
+        }
+        if self.scrolling.is_running() {
+            return Some("a scrolling capture is in progress");
+        }
+        if self.inplace.lock().is_some() {
+            return Some("an in-place annotation session is active");
+        }
+        if self.store.lock().overlay.is_some() {
+            return Some("a capture overlay is active");
+        }
+        #[cfg(target_os = "macos")]
+        if macos_overlay::is_native_overlay_active() {
+            return Some("a capture overlay is active");
+        }
+        None
     }
 }
 
@@ -237,7 +280,7 @@ fn update_settings(
         *state.hotkey_errors.lock() = errs.clone();
         errs
     };
-    tray::update_tray_menu(&app, &new_settings.hotkeys);
+    tray::update_tray_menu(&app, &new_settings.hotkeys, Some(&state.updater.status()));
     *state.settings.lock() = new_settings;
     Ok(errors)
 }
@@ -266,7 +309,7 @@ fn reset_settings(app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<App
     defaults.save()?;
     let errors = hotkeys::sync_hotkeys(&app, &defaults.hotkeys, dispatch_capture_action);
     *state.hotkey_errors.lock() = errors;
-    tray::update_tray_menu(&app, &defaults.hotkeys);
+    tray::update_tray_menu(&app, &defaults.hotkeys, Some(&state.updater.status()));
     *state.settings.lock() = defaults.clone();
     Ok(defaults)
 }
@@ -1157,6 +1200,162 @@ fn inplace_finish(
     result
 }
 
+// ============================================================================
+// Seamless Auto-Update Commands & Tray Coordination
+// ============================================================================
+
+pub(crate) fn sync_tray_for_update(app: &AppHandle, status: &updater::UpdateStatus) {
+    let Some(state) = app.try_state::<Arc<AppState>>() else {
+        return;
+    };
+    let bucket = if status.state == updater::UpdatePhase::Downloading {
+        status.progress / 5
+    } else {
+        status.progress
+    };
+    let next_key = (status.state, bucket);
+    {
+        let mut last = state.last_tray_update_key.lock();
+        if *last == next_key && status.state == updater::UpdatePhase::Downloading {
+            return;
+        }
+        *last = next_key;
+    }
+    let hotkeys_cfg = state.settings.lock().hotkeys.clone();
+    tray::update_tray_menu(app, &hotkeys_cfg, Some(status));
+}
+
+pub(crate) fn commit_update_restart_internal(
+    app: &AppHandle,
+    state: &Arc<AppState>,
+    mut app_state: serde_json::Value,
+) -> Result<(), String> {
+    if let Some(reason) = state.active_capture_block_reason() {
+        return Err(format!("Cannot restart while {reason}"));
+    }
+
+    // Flush settings atomically and release global hotkeys before exiting.
+    state.settings.lock().save()?;
+    let _ = app.global_shortcut().unregister_all();
+
+    let prefs_open = app
+        .get_webview_window(windows::LABEL_PREFERENCES)
+        .and_then(|w| w.is_visible().ok())
+        .unwrap_or(false);
+    let window_geom = if prefs_open {
+        updater::capture_window_geometry(app)
+    } else {
+        None
+    };
+
+    if !app_state.is_object() {
+        app_state = serde_json::json!({});
+    }
+    if let Some(obj) = app_state.as_object_mut() {
+        obj.entry("preferences_open")
+            .or_insert_with(|| serde_json::Value::Bool(prefs_open));
+        if prefs_open {
+            let tab = state.active_preferences_tab.lock().clone();
+            obj.entry("active_tab")
+                .or_insert_with(|| serde_json::Value::String(tab));
+        }
+    }
+
+    state.updater.commit_restart(app, app_state, window_geom)?;
+    app.exit(0);
+    Ok(())
+}
+
+pub(crate) fn handle_tray_update_click(app: &AppHandle) {
+    let Some(state) = app.try_state::<Arc<AppState>>() else {
+        return;
+    };
+    let status = state.updater.status();
+    match status.state {
+        updater::UpdatePhase::ReadyToRestart => {
+            let app_clone = app.clone();
+            let state_clone = Arc::clone(state.inner());
+            std::thread::spawn(move || {
+                if let Err(err) =
+                    commit_update_restart_internal(&app_clone, &state_clone, serde_json::json!({}))
+                {
+                    eprintln!("[gaze] tray update restart deferred: {err}");
+                }
+            });
+        }
+        updater::UpdatePhase::Available | updater::UpdatePhase::Error if status.available => {
+            if !status.can_apply {
+                if let Some(url) = status.release_url {
+                    let _ = open_external_url(url);
+                }
+                return;
+            }
+            if let Err(err) = state.updater.start_download_from_tray(app.clone()) {
+                eprintln!("[gaze] tray update download failed: {err}");
+            }
+        }
+        _ => {}
+    }
+}
+
+pub(crate) fn try_tray_commit_restart(app: &AppHandle) {
+    let Some(state) = app.try_state::<Arc<AppState>>() else {
+        return;
+    };
+    if let Err(err) = commit_update_restart_internal(app, state.inner(), serde_json::json!({})) {
+        eprintln!("[gaze] auto-restart deferred: {err}");
+    }
+}
+
+#[tauri::command]
+fn set_preferences_tab(state: State<'_, Arc<AppState>>, tab: String) {
+    *state.active_preferences_tab.lock() = tab;
+}
+
+#[tauri::command]
+fn updater_get_status(state: State<'_, Arc<AppState>>) -> updater::UpdateStatus {
+    state.updater.status()
+}
+
+#[tauri::command]
+async fn updater_check_now(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+) -> Result<updater::UpdateStatus, String> {
+    let mgr = Arc::clone(&state.updater);
+    tauri::async_runtime::spawn_blocking(move || mgr.check_manual(&app))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn updater_download_update(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+) -> Result<updater::UpdateStatus, String> {
+    state.updater.start_download(app)
+}
+
+#[tauri::command]
+async fn updater_commit_restart(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+    app_state: serde_json::Value,
+) -> Result<(), String> {
+    let state_clone = Arc::clone(state.inner());
+    let app_clone = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        commit_update_restart_internal(&app_clone, &state_clone, app_state)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn updater_take_handoff(state: State<'_, Arc<AppState>>) -> Option<updater::UpdateHandoffPayload> {
+    state.updater.take_startup_handoff()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app_state = Arc::new(AppState::new());
@@ -1205,6 +1404,24 @@ pub fn run() {
 
             // Pre-warm hidden overlay webview so F1 capture opens instantaneously.
             windows::prewarm_overlay(&handle);
+
+            // Start delayed background update checks & restore Preferences if updated while open.
+            app_state.updater.start_background(handle.clone());
+            if let Some(handoff) = app_state.updater.peek_startup_handoff() {
+                let prefs_open = handoff
+                    .app_state
+                    .get("preferences_open")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                if prefs_open {
+                    let _ = windows::open_preferences(&handle);
+                    if let Some(geom) = handoff.window.as_ref() {
+                        updater::apply_window_geometry(&handle, geom);
+                    }
+                } else {
+                    let _ = app_state.updater.take_startup_handoff();
+                }
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1246,6 +1463,12 @@ pub fn run() {
             inplace_ready,
             inplace_hide,
             inplace_finish,
+            set_preferences_tab,
+            updater_get_status,
+            updater_check_now,
+            updater_download_update,
+            updater_commit_restart,
+            updater_take_handoff,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Gaze");
@@ -1265,4 +1488,48 @@ pub fn run() {
             let _ = app_handle;
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn active_capture_guard_blocks_during_overlay_scrolling_and_inplace() {
+        let state = AppState::new();
+        assert_eq!(state.active_capture_block_reason(), None);
+
+        state.overlay_starting.store(true, Ordering::SeqCst);
+        assert!(state.active_capture_block_reason().is_some());
+        state.overlay_starting.store(false, Ordering::SeqCst);
+        assert_eq!(state.active_capture_block_reason(), None);
+
+        let (_cancel, running) = state.scrolling.begin().expect("begin scrolling");
+        assert!(state.active_capture_block_reason().is_some());
+        running.store(false, Ordering::SeqCst);
+        assert_eq!(state.active_capture_block_reason(), None);
+
+        *state.inplace.lock() = Some(InplaceSession {
+            label: "inplace-1".to_string(),
+            capture_id: "cap-1".to_string(),
+            scale_factor: 2.0,
+            tool: "arrow".to_string(),
+            geometry: InplaceGeometry {
+                view_width: 100.0,
+                view_height: 100.0,
+                selection: InplaceRect::from_xywh(0.0, 0.0, 50.0, 50.0),
+                toolbar: InplaceRect::from_xywh(0.0, 50.0, 50.0, 20.0),
+                toolbar_side: "below".to_string(),
+            },
+            monitor_bounds: capture::MonitorBounds {
+                x: 0,
+                y: 0,
+                width: 100,
+                height: 100,
+            },
+        });
+        assert!(state.active_capture_block_reason().is_some());
+        *state.inplace.lock() = None;
+        assert_eq!(state.active_capture_block_reason(), None);
+    }
 }

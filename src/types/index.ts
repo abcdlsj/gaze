@@ -254,3 +254,35 @@ export interface InplaceSession {
   toolbar: InplaceRect;
   toolbar_side: InplaceToolbarSide;
 }
+
+export type UpdatePhase =
+  | "idle"
+  | "checking"
+  | "available"
+  | "downloading"
+  | "verifying"
+  | "ready_to_restart"
+  | "flushing"
+  | "installing"
+  | "error";
+
+export interface UpdateStatus {
+  current: string;
+  latest?: string;
+  available: boolean;
+  state: UpdatePhase;
+  progress: number;
+  can_apply: boolean;
+  release_url?: string;
+  notes?: string;
+  error?: string;
+}
+
+export interface UpdateHandoffPayload {
+  schema_version: number;
+  from_version: string;
+  to_version: string;
+  created_at_ms: number;
+  ttl_ms: number;
+  app_state: Record<string, unknown>;
+}
