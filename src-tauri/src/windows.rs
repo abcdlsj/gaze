@@ -1,10 +1,12 @@
 use crate::capture::MonitorBounds;
 #[cfg(not(target_os = "macos"))]
 use crate::capture::OverlaySessionInfo;
+#[cfg(target_os = "macos")]
+use crate::macos_window;
 use tauri::utils::config::BackgroundThrottlingPolicy;
 #[cfg(not(target_os = "macos"))]
 use tauri::Emitter;
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 #[cfg(target_os = "macos")]
 use tauri::TitleBarStyle;
@@ -52,17 +54,74 @@ pub fn prewarm_overlay(app: &AppHandle) {
     }
 }
 
+fn configure_webview_window(win: &WebviewWindow) {
+    #[cfg(target_os = "macos")]
+    macos_window::configure_webview_120hz(win);
+    #[cfg(not(target_os = "macos"))]
+    let _ = win;
+}
+
+pub fn activate_and_focus_window(win: &WebviewWindow, follow_up_ms: Option<u64>) {
+    #[cfg(target_os = "macos")]
+    macos_window::activate_and_focus_window(win, follow_up_ms);
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = follow_up_ms;
+        let _ = win.unminimize();
+        let _ = win.show();
+        let _ = win.set_focus();
+    }
+}
+
+/// Picks an existing visible foreground window when Gaze is reopened (e.g. from
+/// Raycast / Spotlight) while already running in the menu bar: prefer an open
+/// Editor window, otherwise an open Preferences window; returns `None` when
+/// Preferences should be opened fresh.
+pub(crate) fn select_reopen_window_label(visible_labels: &[String]) -> Option<String> {
+    if let Some(editor) = visible_labels
+        .iter()
+        .find(|label| label.starts_with("editor-"))
+    {
+        return Some(editor.clone());
+    }
+    if visible_labels
+        .iter()
+        .any(|label| label == LABEL_PREFERENCES)
+    {
+        return Some(LABEL_PREFERENCES.to_string());
+    }
+    None
+}
+
+pub fn handle_reopen(app: &AppHandle) {
+    let mut visible_labels: Vec<String> = app
+        .webview_windows()
+        .into_iter()
+        .filter_map(|(label, win)| win.is_visible().ok().filter(|&v| v).map(|_| label))
+        .collect();
+    visible_labels.sort();
+
+    if let Some(label) = select_reopen_window_label(&visible_labels) {
+        if let Some(win) = app.get_webview_window(&label) {
+            activate_and_focus_window(&win, Some(90));
+            return;
+        }
+    }
+    let _ = open_preferences(app);
+}
+
 /// Safety net for windows created with `visible(false)` that reveal themselves once painted:
-/// if JS ever fails to call `reveal_window` within 1.5s, reveal the window so it never stalls.
-fn schedule_reveal_fallback(app: &AppHandle, label: String, focus: bool) {
+/// if JS ever fails to call `reveal_window` within `timeout_ms`, reveal the window so it never stalls.
+fn schedule_reveal_fallback(app: &AppHandle, label: String, focus: bool, timeout_ms: u64) {
     let app_clone = app.clone();
     std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(1500));
+        std::thread::sleep(std::time::Duration::from_millis(timeout_ms));
         if let Some(win) = app_clone.get_webview_window(&label) {
             if !win.is_visible().unwrap_or(true) {
-                let _ = win.show();
                 if focus {
-                    let _ = win.set_focus();
+                    activate_and_focus_window(&win, Some(90));
+                } else {
+                    let _ = win.show();
                 }
             }
         }
@@ -78,9 +137,7 @@ pub fn is_overlay_visible(app: &AppHandle) -> bool {
 
 pub fn open_preferences(app: &AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_webview_window(LABEL_PREFERENCES) {
-        let _ = win.show();
-        let _ = win.unminimize();
-        let _ = win.set_focus();
+        activate_and_focus_window(&win, Some(90));
         return Ok(());
     }
 
@@ -95,6 +152,7 @@ pub fn open_preferences(app: &AppHandle) -> Result<(), String> {
     .resizable(false)
     .maximizable(false)
     .minimizable(true)
+    .visible(false)
     .center();
 
     #[cfg(target_os = "macos")]
@@ -104,9 +162,11 @@ pub fn open_preferences(app: &AppHandle) -> Result<(), String> {
             .hidden_title(true);
     }
 
-    builder
+    let win = builder
         .build()
         .map_err(|e| format!("Failed to open Preferences window: {e}"))?;
+    configure_webview_window(&win);
+    schedule_reveal_fallback(app, LABEL_PREFERENCES.to_string(), true, 800);
     Ok(())
 }
 
@@ -173,10 +233,11 @@ pub fn open_editor(
             .hidden_title(true);
     }
 
-    builder
+    let win = builder
         .build()
         .map_err(|e| format!("Failed to open Editor window: {e}"))?;
-    schedule_reveal_fallback(app, label, true);
+    configure_webview_window(&win);
+    schedule_reveal_fallback(app, label, true, 1500);
     Ok(())
 }
 
@@ -190,7 +251,7 @@ pub fn ensure_inplace_editor(
     if app.get_webview_window(label).is_some() {
         return Ok(());
     }
-    WebviewWindowBuilder::new(
+    let win = WebviewWindowBuilder::new(
         app,
         label,
         WebviewUrl::App("index.html?window=inplace".into()),
@@ -211,6 +272,7 @@ pub fn ensure_inplace_editor(
     .background_throttling(BackgroundThrottlingPolicy::Disabled)
     .build()
     .map_err(|e| format!("Failed to create in-place editor: {e}"))?;
+    configure_webview_window(&win);
     Ok(())
 }
 
@@ -295,7 +357,7 @@ pub fn open_pin(
     let logical_h = ((img_height as f64) / (scale_factor.max(1.0) as f64)).clamp(90.0, 720.0);
     let url = format!("index.html?window=pin&id={capture_id}");
 
-    WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()))
+    let win = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()))
         .title("Pinned Screenshot")
         .inner_size(logical_w, logical_h)
         .min_inner_size(80.0, 60.0)
@@ -308,7 +370,8 @@ pub fn open_pin(
         .center()
         .build()
         .map_err(|e| format!("Failed to open Pin window: {e}"))?;
-    schedule_reveal_fallback(app, label, true);
+    configure_webview_window(&win);
+    schedule_reveal_fallback(app, label, true, 1500);
     Ok(())
 }
 
@@ -348,7 +411,7 @@ pub fn open_thumbnail(
     };
 
     let url = format!("index.html?window=thumbnail&id={capture_id}");
-    WebviewWindowBuilder::new(app, LABEL_THUMBNAIL, WebviewUrl::App(url.into()))
+    let win = WebviewWindowBuilder::new(app, LABEL_THUMBNAIL, WebviewUrl::App(url.into()))
         .title("Gaze Preview")
         .inner_size(290.0, 202.0)
         .position(px, py)
@@ -362,7 +425,8 @@ pub fn open_thumbnail(
         .focused(false)
         .build()
         .map_err(|e| format!("Failed to open Thumbnail preview: {e}"))?;
-    schedule_reveal_fallback(app, LABEL_THUMBNAIL.to_string(), false);
+    configure_webview_window(&win);
+    schedule_reveal_fallback(app, LABEL_THUMBNAIL.to_string(), false, 1500);
     Ok(())
 }
 
@@ -452,7 +516,7 @@ pub fn open_scroll_hud(
         (mx + (mw - hud_w) * 0.5, my + 56.0)
     };
 
-    WebviewWindowBuilder::new(
+    let win = WebviewWindowBuilder::new(
         app,
         LABEL_SCROLL_HUD,
         WebviewUrl::App("index.html?window=scroll-hud".into()),
@@ -470,6 +534,7 @@ pub fn open_scroll_hud(
     .content_protected(true)
     .build()
     .map_err(|e| format!("Failed to open Scroll HUD: {e}"))?;
+    configure_webview_window(&win);
 
     Ok(ScrollHudRect {
         x: (x * scale).round() as i32,
@@ -482,5 +547,39 @@ pub fn open_scroll_hud(
 pub fn close_scroll_hud(app: &AppHandle) {
     if let Some(win) = app.get_webview_window(LABEL_SCROLL_HUD) {
         let _ = win.destroy();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reopen_prefers_visible_editor_then_preferences_else_none() {
+        let labels = vec![
+            LABEL_THUMBNAIL.to_string(),
+            LABEL_PREFERENCES.to_string(),
+            "editor-12345678".to_string(),
+        ];
+        assert_eq!(
+            select_reopen_window_label(&labels),
+            Some("editor-12345678".to_string())
+        );
+
+        let prefs_only = vec!["pin-abc-1".to_string(), LABEL_PREFERENCES.to_string()];
+        assert_eq!(
+            select_reopen_window_label(&prefs_only),
+            Some(LABEL_PREFERENCES.to_string())
+        );
+
+        let non_foreground = vec![
+            LABEL_OVERLAY.to_string(),
+            LABEL_THUMBNAIL.to_string(),
+            LABEL_SCROLL_HUD.to_string(),
+            "pin-abc-1".to_string(),
+            "inplace-1".to_string(),
+        ];
+        assert_eq!(select_reopen_window_label(&non_foreground), None);
+        assert_eq!(select_reopen_window_label(&[]), None);
     }
 }

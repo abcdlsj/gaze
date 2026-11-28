@@ -11,6 +11,7 @@ import {
   getHotkeyErrors,
   getSettings,
   resetSettings,
+  revealWindow,
   updateSettings,
 } from "../lib/tauri";
 import type { AppSettings } from "../types";
@@ -37,6 +38,7 @@ export function PreferencesWindow() {
   const headerRef = useRef<HTMLElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const lastHeightRef = useRef<number>(0);
+  const revealedRef = useRef<boolean>(false);
 
   const [activeTab, setActiveTab] = useState<TabId>("general");
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -69,12 +71,25 @@ export function PreferencesWindow() {
       );
       if (Math.abs(target - lastHeightRef.current) >= 2) {
         lastHeightRef.current = target;
-        void getCurrentWindow().setSize(new LogicalSize(PREFS_WIDTH, target));
+        return getCurrentWindow().setSize(new LogicalSize(PREFS_WIDTH, target));
       }
+      return Promise.resolve();
     };
 
-    syncHeight();
-    const ro = new ResizeObserver(syncHeight);
+    const resizePromise = syncHeight();
+    if (!revealedRef.current) {
+      revealedRef.current = true;
+      void resizePromise.finally(() => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            void revealWindow(true);
+          });
+        });
+      });
+    }
+    const ro = new ResizeObserver(() => {
+      void syncHeight();
+    });
     ro.observe(content);
     ro.observe(header);
     return () => ro.disconnect();

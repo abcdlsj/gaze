@@ -3,6 +3,8 @@ pub mod clipboard;
 pub mod hotkeys;
 #[cfg(target_os = "macos")]
 pub mod macos_overlay;
+#[cfg(target_os = "macos")]
+pub mod macos_window;
 pub mod permissions;
 pub mod scrolling;
 pub mod settings;
@@ -404,9 +406,10 @@ fn show_overlay_window(app: AppHandle, state: State<'_, Arc<AppState>>) {
 
 #[tauri::command]
 fn reveal_window(window: tauri::WebviewWindow, focus: bool) {
-    let _ = window.show();
     if focus {
-        let _ = window.set_focus();
+        windows::activate_and_focus_window(&window, Some(90));
+    } else {
+        let _ = window.show();
     }
 }
 
@@ -1248,11 +1251,18 @@ pub fn run() {
         .expect("error while building Gaze");
 
     // Keep Gaze running in the menu bar / tray even when all windows are closed.
-    app.run(|_app_handle, event| {
-        if let RunEvent::ExitRequested { api, code, .. } = event {
+    app.run(|app_handle, event| match event {
+        RunEvent::ExitRequested { api, code, .. } => {
             if code.is_none() {
                 api.prevent_exit();
             }
+        }
+        #[cfg(target_os = "macos")]
+        RunEvent::Reopen { .. } => {
+            windows::handle_reopen(app_handle);
+        }
+        _ => {
+            let _ = app_handle;
         }
     });
 }
