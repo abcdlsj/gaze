@@ -158,15 +158,17 @@ impl SendPixelBuffer {
             let s_off = (py + row) * self.bytes_per_row + px * 4;
             let s_row = &src[s_off..s_off + row_bytes];
             let d_row = &mut out[row * row_bytes..(row + 1) * row_bytes];
+            let (s_pixels, _) = s_row.as_chunks::<4>();
+            let (d_pixels, _) = d_row.as_chunks_mut::<4>();
             if self.is_bgra {
-                for (s, d) in s_row.chunks_exact(4).zip(d_row.chunks_exact_mut(4)) {
+                for (s, d) in s_pixels.iter().zip(d_pixels.iter_mut()) {
                     d[0] = s[2];
                     d[1] = s[1];
                     d[2] = s[0];
                     d[3] = 255;
                 }
             } else {
-                for (s, d) in s_row.chunks_exact(4).zip(d_row.chunks_exact_mut(4)) {
+                for (s, d) in s_pixels.iter().zip(d_pixels.iter_mut()) {
                     d[0] = s[0];
                     d[1] = s[1];
                     d[2] = s[2];
@@ -415,17 +417,17 @@ pub fn cg_image_to_rgba(cg_image: &CGImage, force_opaque: bool) -> Result<RgbaIm
     for y in 0..height {
         let s_row = &src[y * bytes_per_row..y * bytes_per_row + row_bytes];
         let d_row = &mut out[y * row_bytes..(y + 1) * row_bytes];
-        let s_chunks = s_row.chunks_exact(4);
-        let d_chunks = d_row.chunks_exact_mut(4);
+        let (s_chunks, _) = s_row.as_chunks::<4>();
+        let (d_chunks, _) = d_row.as_chunks_mut::<4>();
         if force_opaque {
-            for (s, d) in s_chunks.zip(d_chunks) {
+            for (s, d) in s_chunks.iter().zip(d_chunks.iter_mut()) {
                 d[0] = s[2];
                 d[1] = s[1];
                 d[2] = s[0];
                 d[3] = 255;
             }
         } else {
-            for (s, d) in s_chunks.zip(d_chunks) {
+            for (s, d) in s_chunks.iter().zip(d_chunks.iter_mut()) {
                 d[0] = s[2];
                 d[1] = s[1];
                 d[2] = s[0];
